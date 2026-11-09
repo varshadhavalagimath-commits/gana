@@ -117,18 +117,27 @@ export async function DELETE(request: Request) {
 
     const existingChapter = await prisma.storyChapter.findUnique({
       where: { id },
+      include: { album: true },
     });
 
     if (!existingChapter) {
       return NextResponse.json({ error: 'Chapter not found' }, { status: 404 });
     }
 
-    if (
+    const isBookOwner =
+      existingChapter.album &&
       username &&
-      username.toLowerCase() !== existingChapter.authorUsername.toLowerCase() &&
-      username.toLowerCase() !== 'admin'
-    ) {
-      return NextResponse.json({ error: 'Unauthorized to delete this chapter' }, { status: 403 });
+      username.toLowerCase() === existingChapter.album.authorUsername.toLowerCase();
+    const isChapterAuthor =
+      username &&
+      username.toLowerCase() === existingChapter.authorUsername.toLowerCase();
+    const isAdmin = username && username.toLowerCase() === 'admin';
+
+    if (!isBookOwner && !isChapterAuthor && !isAdmin) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Only the owner of the story book or chapter author can delete this audio' },
+        { status: 403 }
+      );
     }
 
     await prisma.storyChapter.delete({

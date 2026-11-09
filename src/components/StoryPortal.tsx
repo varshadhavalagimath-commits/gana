@@ -48,6 +48,31 @@ const STORY_GENRES = [
   'Horror & Supernatural',
 ];
 
+const STORY_LANGUAGES = [
+  'All Languages',
+  'Hindi',
+  'Kannada',
+  'Telugu',
+  'Marathi',
+  'Tamil',
+  'Malayalam',
+  'Odia',
+  'Punjabi',
+  'English',
+];
+
+const UPLOAD_LANGUAGES = [
+  'Hindi',
+  'Kannada',
+  'Telugu',
+  'Marathi',
+  'Tamil',
+  'Malayalam',
+  'Odia',
+  'Punjabi',
+  'English',
+];
+
 export default function StoryPortal({
   currentUser,
   onPlayTrack,
@@ -57,6 +82,7 @@ export default function StoryPortal({
   const [albums, setAlbums] = useState<StoryAlbum[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGenre, setSelectedGenre] = useState('All');
+  const [selectedLanguage, setSelectedLanguage] = useState('All Languages');
   const [activeAlbum, setActiveAlbum] = useState<StoryAlbum | null>(null);
 
   // Story Key Card & Interactive States (Same design as Song Key Card)
@@ -76,6 +102,7 @@ export default function StoryPortal({
   const [albumTitle, setAlbumTitle] = useState('');
   const [albumDesc, setAlbumDesc] = useState('');
   const [albumGenre, setAlbumGenre] = useState('Thriller & Mystery');
+  const [albumLanguage, setAlbumLanguage] = useState('Hindi');
   const [firstChapterTitle, setFirstChapterTitle] = useState('Chapter 1: The Beginning');
   const [chapterAudioFile, setChapterAudioFile] = useState<File | null>(null);
   const [chapterAudioUrl, setChapterAudioUrl] = useState('');
@@ -119,10 +146,10 @@ export default function StoryPortal({
       setLoading(true);
     }
     try {
-      const url =
-        selectedGenre === 'All'
-          ? '/api/stories'
-          : `/api/stories?genre=${encodeURIComponent(selectedGenre)}`;
+      const params = new URLSearchParams();
+      if (selectedGenre !== 'All') params.append('genre', selectedGenre);
+      if (selectedLanguage !== 'All Languages') params.append('language', selectedLanguage);
+      const url = params.toString() ? `/api/stories?${params.toString()}` : '/api/stories';
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -159,7 +186,7 @@ export default function StoryPortal({
       fetchAlbums(false);
     }, 5000);
     return () => clearInterval(interval);
-  }, [selectedGenre]);
+  }, [selectedGenre, selectedLanguage]);
 
   // Compute Daily Top 3 Audio Stories & Novels that people are listening to on a daily basis
   const top3DailyStories = useMemo(() => {
@@ -256,7 +283,7 @@ export default function StoryPortal({
       likesCount: chapter.likesCount || 0,
       artist: `${author} (Author)`,
       album: album.title,
-      language: 'Audio Story',
+      language: album.language || 'Hindi',
       description: chapter.summary || `Timeline Chapter ${chapter.timelineOrder} of ${album.title}`,
     };
     onPlayTrack(chapterAsSong);
@@ -311,6 +338,7 @@ export default function StoryPortal({
       formData.append('title', albumTitle.trim());
       formData.append('description', albumDesc.trim());
       formData.append('genre', albumGenre);
+      formData.append('language', albumLanguage);
       formData.append('authorUsername', currentUser.username);
       formData.append('chapterTitle', firstChapterTitle.trim());
 
@@ -397,13 +425,20 @@ export default function StoryPortal({
 
   // Handle Delete Chapter
   const handleDeleteChapter = async (chapterId: string) => {
-    if (!currentUser || !confirm('Are you sure you want to delete this chapter from your story?')) return;
+    if (!currentUser || !confirm('Are you sure you want to delete this chapter audio from your story book?')) return;
     try {
       const res = await fetch(
         `/api/stories/chapters?id=${chapterId}&username=${encodeURIComponent(currentUser.username)}`,
         { method: 'DELETE' }
       );
       if (res.ok) {
+        setActiveAlbum((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            chapters: (prev.chapters || []).filter((ch) => ch.id !== chapterId),
+          };
+        });
         fetchAlbums();
       }
     } catch (err) {
@@ -518,22 +553,63 @@ export default function StoryPortal({
           )}
         </div>
 
+        {/* Language Specification Filter Pills */}
+        <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+          <div className="flex items-center justify-between gap-2 text-xs font-bold">
+            <span className="text-cyan-400 flex items-center gap-1.5">
+              <span>🌐</span>
+              <span>Language Specification:</span>
+            </span>
+            {selectedLanguage !== 'All Languages' && (
+              <button
+                type="button"
+                onClick={() => setSelectedLanguage('All Languages')}
+                className="text-[11px] text-zinc-400 hover:text-white underline cursor-pointer"
+              >
+                Clear Language Filter
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {STORY_LANGUAGES.map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                onClick={() => setSelectedLanguage(lang)}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer select-none active:scale-95 border ${
+                  selectedLanguage === lang
+                    ? 'bg-cyan-500 text-black border-cyan-400 shadow shadow-cyan-500/30 font-extrabold'
+                    : 'bg-zinc-900/80 text-zinc-300 border-zinc-800 hover:border-cyan-500/40 hover:text-white'
+                }`}
+              >
+                {lang}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Genre Filter Pills */}
-        <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-800/80">
-          {STORY_GENRES.map((g) => (
-            <button
-              key={g}
-              type="button"
-              onClick={() => setSelectedGenre(g)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer select-none active:scale-95 border ${
-                selectedGenre === g
-                  ? 'bg-amber-500 text-black border-amber-400 shadow shadow-amber-500/30 font-extrabold'
-                  : 'bg-zinc-900/80 text-zinc-300 border-zinc-800 hover:border-amber-500/40 hover:text-white'
-              }`}
-            >
-              {g}
-            </button>
-          ))}
+        <div className="space-y-2 pt-2 border-t border-zinc-850">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+            <span>📚</span>
+            <span>Genre:</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {STORY_GENRES.map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setSelectedGenre(g)}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer select-none active:scale-95 border ${
+                  selectedGenre === g
+                    ? 'bg-amber-500 text-black border-amber-400 shadow shadow-amber-500/30 font-extrabold'
+                    : 'bg-zinc-900/80 text-zinc-300 border-zinc-800 hover:border-amber-500/40 hover:text-white'
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -566,8 +642,12 @@ export default function StoryPortal({
                 <span>← Back to all story albums</span>
               </button>
 
-              {/* Author Actions */}
-              {(currentUser?.username === activeAlbum.authorUsername || currentUser?.role === 'ADMIN') && (
+              {/* Author / Book Owner Actions */}
+              {Boolean(
+                currentUser &&
+                (currentUser.username.toLowerCase() === activeAlbum.authorUsername.toLowerCase() ||
+                 currentUser.role === 'ADMIN')
+              ) && (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -575,7 +655,7 @@ export default function StoryPortal({
                       setNewChapterOrder((activeAlbum.chapters?.length || 0) + 1);
                       setShowAddChapterModal(true);
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-black text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow"
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow active:scale-95"
                   >
                     <Plus size={13} strokeWidth={2.5} />
                     <span>Add Chapter</span>
@@ -584,10 +664,11 @@ export default function StoryPortal({
                   <button
                     type="button"
                     onClick={() => handleDeleteAlbum(activeAlbum.id)}
-                    className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-900/40 text-zinc-400 hover:text-red-400 transition cursor-pointer border border-zinc-800"
-                    title="Delete entire novel album"
+                    className="px-3 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-600 border border-red-800/70 hover:border-red-500 text-red-300 hover:text-white transition cursor-pointer text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95"
+                    title="Delete entire novel book and all its chapters"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={13} />
+                    <span>Delete Book</span>
                   </button>
                 </div>
               )}
@@ -595,9 +676,14 @@ export default function StoryPortal({
 
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pt-2">
               <div className="space-y-2">
-                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold uppercase">
-                  {activeAlbum.genre}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold uppercase">
+                    {activeAlbum.genre}
+                  </span>
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
+                    🌐 {activeAlbum.language || 'Hindi'}
+                  </span>
+                </div>
                 <h1 className="text-2xl font-black text-white">{activeAlbum.title}</h1>
                 <p className="text-xs text-purple-300 font-bold flex items-center gap-1.5">
                   <span>Author:</span>
@@ -752,15 +838,22 @@ export default function StoryPortal({
                           </button>
                         </div>
 
-                        {/* Author delete chapter button */}
-                        {(currentUser?.username === chapter.authorUsername || currentUser?.role === 'ADMIN') && (
+                        {/* Option of deleting audio to the owner book of storie */}
+                        {Boolean(
+                          currentUser &&
+                          activeAlbum &&
+                          (currentUser.username.toLowerCase() === activeAlbum.authorUsername.toLowerCase() ||
+                           currentUser.username.toLowerCase() === chapter.authorUsername.toLowerCase() ||
+                           currentUser.role === 'ADMIN')
+                        ) && (
                           <button
                             type="button"
                             onClick={() => handleDeleteChapter(chapter.id)}
-                            className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-900 transition cursor-pointer"
-                            title="Delete this chapter"
+                            className="px-2.5 py-1 rounded-lg bg-red-950/40 hover:bg-red-600 border border-red-800/60 hover:border-red-500 text-red-300 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
+                            title="Delete this audio chapter from your story book"
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={12} />
+                            <span>Delete Audio</span>
                           </button>
                         )}
                       </div>
@@ -1049,6 +1142,9 @@ export default function StoryPortal({
                           <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold uppercase tracking-wider">
                             {featuredKeyStory.genre}
                           </span>
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold">
+                            🌐 {featuredKeyStory.language || 'Hindi'}
+                          </span>
                           <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 font-semibold">
                             ⏱️ {(featuredKeyStory.chapters?.length || 0) > 0 ? `${featuredKeyStory.chapters!.length} Episodes` : 'New Release'}
                           </span>
@@ -1225,16 +1321,20 @@ export default function StoryPortal({
                         )}
                       </div>
 
-                      {/* 🗑️ Option of Deleting */}
-                      {(currentUser?.username === featuredKeyStory.authorUsername || currentUser?.role === 'ADMIN') && (
+                      {/* 🗑️ Option of Deleting Book to the Owner */}
+                      {Boolean(
+                        currentUser &&
+                        (currentUser.username.toLowerCase() === featuredKeyStory.authorUsername.toLowerCase() ||
+                         currentUser.role === 'ADMIN')
+                      ) && (
                         <button
                           type="button"
                           onClick={() => handleDeleteAlbum(featuredKeyStory.id)}
-                          className="px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-600 border border-red-800/50 hover:border-red-500 text-red-300 hover:text-white transition cursor-pointer flex items-center gap-1.5 font-bold shadow-sm"
-                          title="Delete this novel and all its chapters"
+                          className="px-3.5 py-1.5 rounded-xl bg-red-950/50 hover:bg-red-600 border border-red-800/70 hover:border-red-500 text-red-300 hover:text-white transition cursor-pointer flex items-center gap-1.5 font-bold shadow-sm active:scale-95"
+                          title="Delete this novel book and all its chapters"
                         >
                           <Trash2 size={13} />
-                          <span>Delete</span>
+                          <span>Delete Book</span>
                         </button>
                       )}
                     </div>
@@ -1303,10 +1403,15 @@ export default function StoryPortal({
                     className="p-5 rounded-2xl glass-panel border border-zinc-850 hover:border-amber-500/40 transition flex flex-col justify-between gap-4 group hover:shadow-xl hover:shadow-amber-500/5"
                   >
                     <div className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold uppercase">
-                          {album.genre}
-                        </span>
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold uppercase">
+                            {album.genre}
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                            🌐 {album.language || 'Hindi'}
+                          </span>
+                        </div>
                         <span className="text-[10px] font-mono text-zinc-400">
                           {chapterCount} {chapterCount === 1 ? 'Chapter' : 'Chapters'}
                         </span>
@@ -1390,14 +1495,19 @@ export default function StoryPortal({
                           <ChevronRight size={14} />
                         </button>
 
-                        {(currentUser?.username === album.authorUsername || currentUser?.role === 'ADMIN') && (
+                        {Boolean(
+                          currentUser &&
+                          (currentUser.username.toLowerCase() === album.authorUsername.toLowerCase() ||
+                           currentUser.role === 'ADMIN')
+                        ) && (
                           <button
                             type="button"
                             onClick={() => handleDeleteAlbum(album.id)}
-                            className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-900 transition cursor-pointer"
-                            title="Delete this album"
+                            className="px-2 py-1 rounded-lg bg-red-950/40 hover:bg-red-600 border border-red-800/60 hover:border-red-500 text-red-300 hover:text-white transition cursor-pointer text-[11px] font-bold flex items-center gap-1 shadow-sm active:scale-95"
+                            title="Delete this novel book and all its audio chapters"
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={12} />
+                            <span>Delete</span>
                           </button>
                         )}
                       </div>
@@ -1442,19 +1552,38 @@ export default function StoryPortal({
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-300">Genre</label>
-                <select
-                  value={albumGenre}
-                  onChange={(e) => setAlbumGenre(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
-                >
-                  {STORY_GENRES.filter((g) => g !== 'All').map((g) => (
-                    <option key={g} value={g}>
-                      {g}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-300">Genre *</label>
+                  <select
+                    value={albumGenre}
+                    onChange={(e) => setAlbumGenre(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                  >
+                    {STORY_GENRES.filter((g) => g !== 'All').map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-cyan-300 flex items-center gap-1">
+                    <span>🌐 Language Specification *</span>
+                  </label>
+                  <select
+                    value={albumLanguage}
+                    onChange={(e) => setAlbumLanguage(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-cyan-800/60 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    {UPLOAD_LANGUAGES.map((lang) => (
+                      <option key={lang} value={lang}>
+                        {lang}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-1">

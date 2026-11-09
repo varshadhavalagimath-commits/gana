@@ -73,6 +73,7 @@ model StoryAlbum {
   description    String         @default("")
   authorUsername String
   genre          String         @default("Fiction")
+  language       String         @default("Hindi") // "Hindi" | "Kannada" | "Telugu" | "Marathi" | "Tamil" | "Malayalam" | "Odia" | "Punjabi" | "English"
   coverUrl       String?
   likesCount     Int            @default(0)
   dislikesCount  Int            @default(0)

@@ -101,6 +101,7 @@ export interface StoryAlbum {
   description: string;
   authorUsername: string;
   genre: string;
+  language?: string;
   coverUrl?: string | null;
   likesCount: number;
   dislikesCount: number;

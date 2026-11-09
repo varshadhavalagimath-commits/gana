@@ -448,7 +448,7 @@ export default function BottomPlayer({
               </div>
               <p className="text-[10px] text-zinc-300 font-extrabold truncate mt-0.5 leading-none">
                 {currentTrack.genre?.includes('Audio Novel') || currentTrack.language === 'Audio Story'
-                  ? `Author: ${currentTrack.artist?.replace(' (Author)', '') || currentTrack.creatorUsername} • Story: ${currentTrack.album || 'Novel'}`
+                  ? `Author: ${currentTrack.artist?.replace(' (Author)', '') || currentTrack.creatorUsername} • Story: ${currentTrack.album || 'Novel'} • 🌐 ${currentTrack.language || 'Hindi'}`
                   : `Singer: ${currentTrack.artist || 'Unknown Singer'} • Album: ${currentTrack.album || 'Single'}`}
               </p>
               <p className="text-[9px] text-zinc-450 truncate mt-1 leading-none">
