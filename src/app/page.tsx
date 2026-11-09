@@ -71,16 +71,24 @@ function DashboardContent() {
     }
   }, [currentUser]);
 
-  // Fetch Friends and follow requests
+  // Fetch Friends and follow requests (with stable reference check)
   const fetchFriends = async () => {
     if (!currentUser) return;
     try {
       const response = await fetch(`/api/friends?username=${encodeURIComponent(currentUser.username)}`);
       const data = await response.json();
       if (response.ok) {
-        setFriends(data.friends || []);
-        setIncomingRequests(data.incomingRequests || []);
-        setTotalUnreadCount(data.totalUnreadCount || 0);
+        setFriends((prev) => {
+          const next = data.friends || [];
+          if (prev.length === next.length && prev.every((f, i) => f.id === next[i]?.id)) return prev;
+          return next;
+        });
+        setIncomingRequests((prev) => {
+          const next = data.incomingRequests || [];
+          if (prev.length === next.length && prev.every((r, i) => r.id === next[i]?.id)) return prev;
+          return next;
+        });
+        setTotalUnreadCount((prev) => (prev === data.totalUnreadCount ? prev : data.totalUnreadCount || 0));
       }
     } catch (error) {
       console.error('Failed to fetch friends network:', error);

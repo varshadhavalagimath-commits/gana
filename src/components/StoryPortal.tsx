@@ -114,7 +114,10 @@ export default function StoryPortal({
   }, [currentUser]);
 
   // Fetch all story albums & keep comments/likes synchronized across users in real-time
-  const fetchAlbums = async () => {
+  const fetchAlbums = async (isInitial = false) => {
+    if (isInitial) {
+      setLoading(true);
+    }
     try {
       const url =
         selectedGenre === 'All'
@@ -143,15 +146,18 @@ export default function StoryPortal({
     } catch (err) {
       console.error('Failed to load stories:', err);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   };
 
-  // Real-time synchronization interval (refreshes every 3.5s so comments and likes from other users show immediately)
+  // Real-time synchronization interval (silent background sync: ZERO flickering, perfectly stable)
   useEffect(() => {
-    setLoading(true);
-    fetchAlbums();
-    const interval = setInterval(fetchAlbums, 3500);
+    fetchAlbums(true);
+    const interval = setInterval(() => {
+      fetchAlbums(false);
+    }, 5000);
     return () => clearInterval(interval);
   }, [selectedGenre]);
 

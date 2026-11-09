@@ -124,9 +124,11 @@ export default function CommunityFeed({
     }
   }, []);
 
-  // Fetch songs from API
-  const fetchSongs = async () => {
-    setLoading(true);
+  // Fetch songs from API (Silent background sync: Only show loading spinner on initial mount or manual filter change)
+  const fetchSongs = async (isInitial = false) => {
+    if (isInitial) {
+      setLoading(true);
+    }
     try {
       const url = new URL('/api/songs', window.location.origin);
       if (selectedMood) url.searchParams.set('moodEmoji', selectedMood);
@@ -141,13 +143,17 @@ export default function CommunityFeed({
     } catch (error) {
       console.error('Failed to fetch songs:', error);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchSongs();
-    const interval = setInterval(fetchSongs, 3500);
+    fetchSongs(true);
+    const interval = setInterval(() => {
+      fetchSongs(false);
+    }, 5000);
     return () => clearInterval(interval);
   }, [selectedMood, selectedLanguage, refreshKey]);
 
