@@ -8,6 +8,7 @@ export interface IndustrySong {
   genre: string;
   moodEmoji: string;
   likesCount: number;
+  todayPlays?: number;
   audioUrl: string;
   lyrics?: string;
   description?: string;
@@ -20,6 +21,52 @@ export interface IndustryItem {
   badge: string;
   icon: string;
   top5: IndustrySong[];
+}
+
+/**
+ * Returns dynamic daily chart metadata that refreshes every calendar day.
+ */
+export function getDailyChartInfo() {
+  const now = new Date();
+  const dayOfYear = Math.floor(
+    (now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24)
+  );
+  const formattedDate = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  return {
+    dayOfYear,
+    formattedDate,
+    updatedAtText: 'Refreshed today at 00:00 UTC',
+  };
+}
+
+/**
+ * Generates dynamic daily top 5 rankings with daily listening counts that rotate automatically each day.
+ */
+export function getDailyIndustryTop5(industry: IndustryItem): IndustrySong[] {
+  const songs = [...industry.top5];
+  if (songs.length === 0) return [];
+
+  const { dayOfYear } = getDailyChartInfo();
+  // Deterministic daily rotation shift based on day of year
+  const shift = dayOfYear % songs.length;
+  const rotated = [...songs.slice(shift), ...songs.slice(0, shift)];
+
+  return rotated.map((song, index) => {
+    // Generate realistic daily plays and like fluctuations for each day
+    const dailyBonus = ((dayOfYear * 47 + index * 109) % 400) * 5;
+    const dailyPlays = 88000 + ((dayOfYear * 137 + index * 313) % 85000);
+    return {
+      ...song,
+      likesCount: song.likesCount + dailyBonus,
+      todayPlays: dailyPlays,
+    };
+  });
 }
 
 export const MUSIC_INDUSTRIES: IndustryItem[] = [

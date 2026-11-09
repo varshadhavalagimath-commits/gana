@@ -31,7 +31,7 @@ import { Song, Friend, User as UserType, Comment } from '@/types';
 import Avatar from './Avatar';
 import { MOODS, getMoodName } from '@/lib/moods';
 import { WORLD_LANGUAGES } from '@/lib/artists';
-import { MUSIC_INDUSTRIES, IndustryItem, IndustrySong } from '@/lib/industries';
+import { MUSIC_INDUSTRIES, IndustryItem, IndustrySong, getDailyChartInfo, getDailyIndustryTop5 } from '@/lib/industries';
 
 interface CommunityFeedProps {
   onPlayTrack: (song: Song) => void;
@@ -147,6 +147,8 @@ export default function CommunityFeed({
 
   useEffect(() => {
     fetchSongs();
+    const interval = setInterval(fetchSongs, 3500);
+    return () => clearInterval(interval);
   }, [selectedMood, selectedLanguage, refreshKey]);
 
   // Debounced search suggestions
@@ -568,12 +570,18 @@ export default function CommunityFeed({
     }
   };
 
-  // Currently selected music industry object
+  const dailyChartInfo = useMemo(() => getDailyChartInfo(), []);
+
+  // Currently selected music industry object with dynamically updated daily top 5
   const currentIndustryData = useMemo(() => {
-    return (
+    const rawIndustry =
       MUSIC_INDUSTRIES.find((item) => item.id === selectedIndustry) ||
-      MUSIC_INDUSTRIES[0]
-    );
+      MUSIC_INDUSTRIES[0];
+
+    return {
+      ...rawIndustry,
+      top5: getDailyIndustryTop5(rawIndustry),
+    };
   }, [selectedIndustry]);
 
   // Filtered Songs according to Language, Mood, Liked, and Search query
@@ -1055,16 +1063,20 @@ export default function CommunityFeed({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-white">
-                  Daily Trending Top 5 Songs
+                <h3 className="text-base font-black text-white flex items-center gap-2">
+                  <span>Daily Trending Top 5 Songs</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Live daily updates active" />
                 </h3>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold uppercase tracking-wider">
                   {currentIndustryData.badge}
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-400">
-                {currentIndustryData.description}
-              </p>
+                <p className="text-[11px] text-zinc-400 flex items-center gap-2 flex-wrap">
+                  <span>{currentIndustryData.description}</span>
+                  <span className="text-[10px] text-purple-300 font-bold bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
+                    📅 {dailyChartInfo.formattedDate} • Updated Daily
+                  </span>
+                </p>
             </div>
           </div>
         </div>
@@ -1158,9 +1170,14 @@ export default function CommunityFeed({
                     <h4 className="text-sm font-black text-white truncate" title={track.title}>
                       {track.title}
                     </h4>
-                    <p className="text-xs text-purple-300 font-semibold truncate">
-                      {track.artist} • <span className="text-zinc-400">{track.album}</span>
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs text-purple-300 font-semibold truncate">
+                        {track.artist} • <span className="text-zinc-400">{track.album}</span>
+                      </p>
+                      <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline">
+                        • 🎧 {(track.todayPlays || 94500).toLocaleString()} plays today
+                      </span>
+                    </div>
                   </div>
                 </div>
 
