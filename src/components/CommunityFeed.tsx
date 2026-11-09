@@ -126,12 +126,11 @@ export default function CommunityFeed({
 
   // Fetch songs from API (Silent background sync: Only show loading spinner on initial mount or manual filter change)
   const fetchSongs = async (isInitial = false) => {
-    if (isInitial) {
+    if (isInitial && songs.length === 0) {
       setLoading(true);
     }
     try {
       const url = new URL('/api/songs', window.location.origin);
-      if (selectedMood) url.searchParams.set('moodEmoji', selectedMood);
       if (selectedLanguage && selectedLanguage !== 'All') {
         url.searchParams.set('language', selectedLanguage);
       }
@@ -155,7 +154,7 @@ export default function CommunityFeed({
       fetchSongs(false);
     }, 5000);
     return () => clearInterval(interval);
-  }, [selectedMood, selectedLanguage, refreshKey]);
+  }, [selectedLanguage, refreshKey]);
 
   // Debounced search suggestions
   useEffect(() => {
@@ -253,13 +252,14 @@ export default function CommunityFeed({
     }
   };
 
-  // Add / Remove Song from User's Mood Playlist
-  const handleToggleSongMood = (songId: string, moodEmoji: string) => {
+  // Add / Remove Song from User's Mood Playlist & sync song mood
+  const handleToggleSongMood = async (songId: string, moodEmoji: string) => {
     if (!currentUser) return;
     const currentTags = userMoodTags[songId] || [];
-    const nextTags = currentTags.includes(moodEmoji)
-      ? currentTags.filter((m) => m !== moodEmoji)
-      : [...currentTags, moodEmoji];
+    const isAdding = !currentTags.includes(moodEmoji);
+    const nextTags = isAdding
+      ? [...currentTags, moodEmoji]
+      : currentTags.filter((m) => m !== moodEmoji);
 
     const nextState = {
       ...userMoodTags,
@@ -267,6 +267,27 @@ export default function CommunityFeed({
     };
     setUserMoodTags(nextState);
     localStorage.setItem(`gana_mood_tags_${currentUser.username}`, JSON.stringify(nextState));
+
+    // Immediately update local song state so it reflects across the feed & mood filters
+    setSongs((prev) =>
+      prev.map((s) => (s.id === songId ? { ...s, moodEmoji } : s))
+    );
+
+    // Also update searchedKeySong if active
+    setSearchedKeySong((prev) => (prev && prev.id === songId ? { ...prev, moodEmoji } : prev));
+
+    // Persist to backend database if it's a real song ID
+    if (!songId.startsWith('yt_') && !songId.startsWith('trend_')) {
+      try {
+        await fetch('/api/songs', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ songId, moodEmoji }),
+        });
+      } catch (err) {
+        console.warn('Could not persist mood update to database:', err);
+      }
+    }
   };
 
   // Remove specific mood tag from song
@@ -598,15 +619,15 @@ export default function CommunityFeed({
         return false;
       }
 
-      // 2. Mood filter from DB
-      if (selectedMood && s.moodEmoji !== selectedMood) {
-        return false;
-      }
-
-      // 3. User Mood Playlist filter
-      if (activeMoodPlaylist) {
+      // 2. Unified Mood Filter (matches either primary mood or user's added mood tag)
+      const targetMood = selectedMood || activeMoodPlaylist;
+      if (targetMood) {
         const tags = userMoodTags[s.id] || [];
-        if (!tags.includes(activeMoodPlaylist)) return false;
+        const matchesPrimary = s.moodEmoji === targetMood;
+        const matchesUserTags = tags.includes(targetMood);
+        if (!matchesPrimary && !matchesUserTags) {
+          return false;
+        }
       }
 
       // 4. Only liked filter
@@ -1319,11 +1340,9 @@ export default function CommunityFeed({
                 key={m.emoji}
                 type="button"
                 onClick={() => {
-                  if (selectedMood === m.emoji) {
-                    setSelectedMood(null);
-                  } else {
-                    setSelectedMood(m.emoji);
-                  }
+                  const next = selectedMood === m.emoji ? null : m.emoji;
+                  setSelectedMood(next);
+                  setActiveMoodPlaylist(next);
                 }}
                 className={`px-3 py-1.5 rounded-full text-xs font-black transition cursor-pointer select-none active:scale-95 border flex items-center gap-1.5 ${
                   isMoodSelected

@@ -141,6 +141,27 @@ export async function POST(request: Request) {
   }
 }
 
+// PATCH: Update song mood emoji
+export async function PATCH(request: Request) {
+  try {
+    const { songId, moodEmoji } = await request.json();
+
+    if (!songId || !moodEmoji) {
+      return NextResponse.json({ error: 'Song ID and moodEmoji are required' }, { status: 400 });
+    }
+
+    const updatedSong = await prisma.song.update({
+      where: { id: songId },
+      data: { moodEmoji },
+    });
+
+    return NextResponse.json({ success: true, song: updatedSong }, { status: 200 });
+  } catch (error) {
+    console.error('Song PATCH Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
