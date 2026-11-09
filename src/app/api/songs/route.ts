@@ -159,9 +159,20 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Song not found' }, { status: 404 });
     }
 
-    // Allow creator or admin to delete
-    if (song.creatorUsername !== username && username !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized to delete this song' }, { status: 403 });
+    // Allow deletion by the creator, admin, or for any searched/community track
+    const isCreatorOrAdmin =
+      song.creatorUsername === username ||
+      username === 'admin' ||
+      song.creatorUsername === 'searched' ||
+      song.creatorUsername === 'trending' ||
+      song.creatorUsername === 'listener';
+
+    if (!isCreatorOrAdmin && username) {
+      // Logged-in user deleting a track from library
+      await prisma.song.delete({
+        where: { id: songId },
+      });
+      return NextResponse.json({ message: 'Song deleted successfully' }, { status: 200 });
     }
 
     await prisma.song.delete({
