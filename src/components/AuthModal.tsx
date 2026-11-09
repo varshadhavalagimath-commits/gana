@@ -13,6 +13,7 @@ import {
   Headphones,
   ShieldCheck,
   Globe,
+  BookOpen,
 } from 'lucide-react';
 import { User } from '@/types';
 
@@ -25,8 +26,8 @@ export default function AuthModal({ onLogin, initialMode = 'signin' }: AuthModal
   const { t } = useLanguage();
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
 
-  // Role selection for registration: 'USER' (Listener) vs 'SINGER' (Artist)
-  const [selectedRole, setSelectedRole] = useState<'USER' | 'SINGER'>('USER');
+  // Role selection for registration: 'USER' (Listener) vs 'STORY_WRITER' vs 'SINGER'
+  const [selectedRole, setSelectedRole] = useState<'USER' | 'SINGER' | 'STORY_WRITER'>('USER');
 
   // Sign In inputs
   const [signInIdentifier, setSignInIdentifier] = useState('');
@@ -225,52 +226,74 @@ export default function AuthModal({ onLogin, initialMode = 'signin' }: AuthModal
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'signup' && (
-            /* --- SELECT ACCOUNT TYPE: SINGER VS LISTENER --- */
+            /* --- SELECT ACCOUNT TYPE: LISTENER VS STORY WRITER VS SINGER --- */
             <div>
               <label className="block mb-2 text-xs font-black text-zinc-300 uppercase tracking-wider">
                 Select Your Account Type
               </label>
-              <div className="grid grid-cols-2 gap-3 select-none">
-                {/* Singer Option */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 select-none">
+                {/* User / Listener Option */}
                 <div
-                  onClick={() => setSelectedRole('SINGER')}
-                  className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-2 ${
-                    selectedRole === 'SINGER'
-                      ? 'bg-purple-950/50 border-purple-500 text-white shadow-md shadow-purple-500/20'
+                  onClick={() => setSelectedRole('USER')}
+                  className={`p-3 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1.5 ${
+                    selectedRole === 'USER'
+                      ? 'bg-cyan-950/60 border-cyan-400 text-white shadow-md shadow-cyan-500/20'
                       : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                   }`}
                 >
-                  <div className={`p-2.5 rounded-xl ${selectedRole === 'SINGER' ? 'bg-purple-600 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
-                    <Mic size={20} />
+                  <div className={`p-2 rounded-xl ${selectedRole === 'USER' ? 'bg-cyan-500 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
+                    <Headphones size={18} />
                   </div>
                   <div>
-                    <h4 className="text-xs font-black text-zinc-100 flex items-center justify-center gap-1">
-                      Singer / Artist
+                    <h4 className="text-xs font-black text-zinc-100">
+                      Listener
                     </h4>
                     <p className="text-[10px] text-zinc-400 mt-0.5 leading-tight">
-                      Upload and publish songs into website
+                      Listen, mood playlists, likes & comments
                     </p>
                   </div>
                 </div>
 
-                {/* User / Listener Option */}
+                {/* Story Writer Option */}
                 <div
-                  onClick={() => setSelectedRole('USER')}
-                  className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-2 ${
-                    selectedRole === 'USER'
-                      ? 'bg-cyan-950/50 border-cyan-500 text-white shadow-md shadow-cyan-500/20'
+                  onClick={() => setSelectedRole('STORY_WRITER')}
+                  className={`p-3 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1.5 ${
+                    selectedRole === 'STORY_WRITER'
+                      ? 'bg-amber-950/60 border-amber-400 text-white shadow-md shadow-amber-500/20'
                       : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                   }`}
                 >
-                  <div className={`p-2.5 rounded-xl ${selectedRole === 'USER' ? 'bg-cyan-500 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
-                    <Headphones size={20} />
+                  <div className={`p-2 rounded-xl ${selectedRole === 'STORY_WRITER' ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
+                    <BookOpen size={18} />
                   </div>
                   <div>
-                    <h4 className="text-xs font-black text-zinc-100 flex items-center justify-center gap-1">
-                      User / Listener
+                    <h4 className="text-xs font-black text-zinc-100">
+                      Story Writer
                     </h4>
                     <p className="text-[10px] text-zinc-400 mt-0.5 leading-tight">
-                      Listen, mood playlists, like & share
+                      Create story albums & timeline episodes
+                    </p>
+                  </div>
+                </div>
+
+                {/* Singer Option */}
+                <div
+                  onClick={() => setSelectedRole('SINGER')}
+                  className={`p-3 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1.5 ${
+                    selectedRole === 'SINGER'
+                      ? 'bg-purple-950/60 border-purple-400 text-white shadow-md shadow-purple-500/20'
+                      : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                  }`}
+                >
+                  <div className={`p-2 rounded-xl ${selectedRole === 'SINGER' ? 'bg-purple-600 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
+                    <Mic size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-zinc-100">
+                      Singer / Artist
+                    </h4>
+                    <p className="text-[10px] text-zinc-400 mt-0.5 leading-tight">
+                      Record tunes, attach lyrics & publish songs
                     </p>
                   </div>
                 </div>

@@ -16,19 +16,22 @@ import {
   TrendingUp,
   X,
   ArrowRight,
-  Disc,
   Globe,
   Loader2,
   CheckCircle2,
-  Zap,
-  Crown,
   Smile,
   ListMusic,
+  BookOpen,
+  Copy,
+  Check,
+  Flame,
+  Award,
 } from 'lucide-react';
 import { Song, Friend, User as UserType, Comment } from '@/types';
 import Avatar from './Avatar';
 import { MOODS, getMoodName } from '@/lib/moods';
-import { FEATURED_ARTISTS, WORLD_LANGUAGES, ArtistItem } from '@/lib/artists';
+import { WORLD_LANGUAGES } from '@/lib/artists';
+import { MUSIC_INDUSTRIES, IndustryItem, IndustrySong } from '@/lib/industries';
 
 interface CommunityFeedProps {
   onPlayTrack: (song: Song) => void;
@@ -52,12 +55,10 @@ export default function CommunityFeed({
   const { t } = useLanguage();
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
 
-  // Filter States
+  // Industry & Language Filter States
+  const [selectedIndustry, setSelectedIndustry] = useState<string>('all');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('All');
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
-  const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
-  const [selectedAlbum, setSelectedAlbum] = useState<string | null>(null);
-  const [selectedGenreFilter, setSelectedGenreFilter] = useState<string | null>(null);
   const [onlyLiked, setOnlyLiked] = useState(false);
   const [activeMoodPlaylist, setActiveMoodPlaylist] = useState<string | null>(null);
 
@@ -72,16 +73,24 @@ export default function CommunityFeed({
   const [userMoodTags, setUserMoodTags] = useState<Record<string, string[]>>({});
   const [likedSongIds, setLikedSongIds] = useState<string[]>([]);
 
-  // Search & Google-like Autocomplete states (strictly keyword & database songs, NO similar mood representator)
+  // Search & Autocomplete states
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<{
     queries: string[];
     dbSongs: any[];
-    matchedArtists?: { artist: string; albums: string[]; count: number }[];
-    matchedAlbums?: { album: string; artist: string; count: number }[];
   } | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
+  const [searchingOnline, setSearchingOnline] = useState(false);
+
+  // Lyrics Viewer Modal state
+  const [viewingLyricsSong, setViewingLyricsSong] = useState<{
+    title: string;
+    artist: string;
+    lyrics: string;
+  } | null>(null);
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [lyricsCopied, setLyricsCopied] = useState(false);
 
   // Comments accordion states
   const [expandedCommentsSongId, setExpandedCommentsSongId] = useState<string | null>(null);
@@ -103,7 +112,7 @@ export default function CommunityFeed({
           setUserMoodTags(JSON.parse(savedMoodTags));
         }
 
-        // Load user liked songs list
+        // Load user's liked song IDs
         const savedLikes = localStorage.getItem(`gana_likes_${u.username}`);
         if (savedLikes) {
           setLikedSongIds(JSON.parse(savedLikes));
@@ -114,7 +123,7 @@ export default function CommunityFeed({
     }
   }, []);
 
-  // Fetch songs from API with language and mood support
+  // Fetch songs from API
   const fetchSongs = async () => {
     setLoading(true);
     try {
@@ -124,8 +133,8 @@ export default function CommunityFeed({
         url.searchParams.set('language', selectedLanguage);
       }
       const response = await fetch(url.toString());
-      const data = await response.json();
       if (response.ok) {
+        const data = await response.json();
         setSongs(data.songs || []);
       }
     } catch (error) {
@@ -139,7 +148,7 @@ export default function CommunityFeed({
     fetchSongs();
   }, [selectedMood, selectedLanguage, refreshKey]);
 
-  // Debounced search suggestions (queries and DB songs only)
+  // Debounced search suggestions
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       setSuggestions(null);
@@ -154,14 +163,14 @@ export default function CommunityFeed({
           setSuggestions(data);
         }
       } catch (e) {
-        console.error('Failed to load suggestions:', e);
+        console.warn('Suggestions error:', e);
       }
     }, 200);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Click outside listener to close search suggestions
+  // Click outside listener to close search suggestions & popovers
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
@@ -178,30 +187,47 @@ export default function CommunityFeed({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Handle Like Toggle
+  // Handle Like Toggle (Supports Unliking / Removing Like)
   const handleLike = async (songId: string) => {
+    const isCurrentlyLiked = likedSongIds.includes(songId);
+    const action = isCurrentlyLiked ? 'unlike' : 'like';
+
+    // Optimistically update local liked list
+    if (currentUser) {
+      setLikedSongIds((prev) => {
+        const next = isCurrentlyLiked ? prev.filter((id) => id !== songId) : [...prev, songId];
+        localStorage.setItem(`gana_likes_${currentUser.username}`, JSON.stringify(next));
+        return next;
+      });
+    }
+
+    // Optimistically update like count on local song state
+    setSongs((prev) =>
+      prev.map((s) =>
+        s.id === songId
+          ? { ...s, likesCount: Math.max(0, s.likesCount + (isCurrentlyLiked ? -1 : 1)) }
+          : s
+      )
+    );
+
     try {
-      const response = await fetch(`/api/songs/${songId}/like`, { method: 'POST' });
+      const response = await fetch(`/api/songs/${songId}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, username: currentUser?.username }),
+      });
       if (response.ok) {
         const data = await response.json();
         setSongs((prev) =>
           prev.map((s) => (s.id === songId ? { ...s, likesCount: data.song.likesCount } : s))
         );
-
-        if (currentUser) {
-          setLikedSongIds((prev) => {
-            const next = prev.includes(songId) ? prev.filter((id) => id !== songId) : [...prev, songId];
-            localStorage.setItem(`gana_likes_${currentUser.username}`, JSON.stringify(next));
-            return next;
-          });
-        }
       }
     } catch (error) {
-      console.error('Failed to like:', error);
+      console.error('Failed to like/unlike:', error);
     }
   };
 
-  // Add / Tag Song to User's Mood Playlist
+  // Add / Remove Song from User's Mood Playlist
   const handleToggleSongMood = (songId: string, moodEmoji: string) => {
     if (!currentUser) return;
     const currentTags = userMoodTags[songId] || [];
@@ -217,6 +243,28 @@ export default function CommunityFeed({
     localStorage.setItem(`gana_mood_tags_${currentUser.username}`, JSON.stringify(nextState));
   };
 
+  // Remove specific mood tag from song
+  const handleRemoveSongMood = (songId: string, moodEmoji: string) => {
+    if (!currentUser) return;
+    const currentTags = userMoodTags[songId] || [];
+    const nextTags = currentTags.filter((m) => m !== moodEmoji);
+    const nextState = {
+      ...userMoodTags,
+      [songId]: nextTags,
+    };
+    setUserMoodTags(nextState);
+    localStorage.setItem(`gana_mood_tags_${currentUser.username}`, JSON.stringify(nextState));
+  };
+
+  // Remove song from ALL moods
+  const handleRemoveSongFromAllMoods = (songId: string) => {
+    if (!currentUser) return;
+    const nextState = { ...userMoodTags };
+    delete nextState[songId];
+    setUserMoodTags(nextState);
+    localStorage.setItem(`gana_mood_tags_${currentUser.username}`, JSON.stringify(nextState));
+  };
+
   // Copy shareable song link
   const handleCopyLink = (songId: string) => {
     const shareUrl = `${window.location.origin}/?play=${songId}`;
@@ -226,7 +274,7 @@ export default function CommunityFeed({
     });
   };
 
-  // Delete song
+  // Delete song from Gana
   const handleDeleteSong = async (songId: string) => {
     if (!currentUser || !confirm('Are you sure you want to delete this track from Gana?')) return;
     try {
@@ -244,7 +292,7 @@ export default function CommunityFeed({
     }
   };
 
-  // Comments toggle
+  // Toggle comments accordion
   const toggleComments = async (songId: string) => {
     if (expandedCommentsSongId === songId) {
       setExpandedCommentsSongId(null);
@@ -255,8 +303,8 @@ export default function CommunityFeed({
     setCommentsLoading(true);
     try {
       const res = await fetch(`/api/songs/comments?songId=${songId}`);
-      const data = await res.json();
       if (res.ok) {
+        const data = await res.json();
         setSongComments(data.comments || []);
       }
     } catch (error) {
@@ -270,7 +318,7 @@ export default function CommunityFeed({
   const handleAddComment = async (e: React.FormEvent, songId: string) => {
     e.preventDefault();
     if (!currentUser || !newCommentText.trim()) return;
-    const text = newCommentText;
+    const text = newCommentText.trim();
     setNewCommentText('');
     try {
       const res = await fetch('/api/songs/comments', {
@@ -285,77 +333,145 @@ export default function CommunityFeed({
       if (res.ok) {
         const data = await res.json();
         setSongComments((prev) => [...prev, data.comment]);
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to post comment');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error('Comment error:', error);
     }
   };
 
-  // Top Singers filtered by selected Language
-  const topSingers = useMemo(() => {
-    if (selectedLanguage === 'All') {
-      return FEATURED_ARTISTS;
+  // Delete comment (Author or Admin)
+  const handleDeleteComment = async (commentId: string) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(
+        `/api/songs/comments?id=${commentId}&username=${encodeURIComponent(currentUser.username)}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        setSongComments((prev) => prev.filter((c) => c.id !== commentId));
+      }
+    } catch (error) {
+      console.error('Delete comment error:', error);
     }
-    return FEATURED_ARTISTS.filter(
-      (a) => a.language.toLowerCase() === selectedLanguage.toLowerCase()
-    );
-  }, [selectedLanguage]);
+  };
 
-  // Top Albums in the selected language
-  const topAlbums = useMemo(() => {
-    const albumMap = new Map<string, { album: string; artist: string; count: number; language: string }>();
-
-    // From FEATURED_ARTISTS
-    const relevantArtists = selectedLanguage === 'All'
-      ? FEATURED_ARTISTS
-      : FEATURED_ARTISTS.filter((a) => a.language.toLowerCase() === selectedLanguage.toLowerCase());
-
-    relevantArtists.forEach((a) => {
-      a.albums.forEach((alb) => {
-        if (!albumMap.has(alb.toLowerCase())) {
-          albumMap.set(alb.toLowerCase(), {
-            album: alb,
-            artist: a.name,
-            count: 3,
-            language: a.language,
-          });
-        }
-      });
+  // Open Lyrics Viewer
+  const handleOpenLyrics = async (song: Song | IndustrySong) => {
+    setLyricsLoading(true);
+    setViewingLyricsSong({
+      title: song.title,
+      artist: song.artist,
+      lyrics: song.lyrics || 'Loading lyrics...',
     });
+    setLyricsCopied(false);
 
-    // Also include albums from database songs
-    songs.forEach((s) => {
-      if (!s.album || s.album === 'Single') return;
-      if (selectedLanguage !== 'All' && s.language && s.language !== selectedLanguage) return;
-      const key = s.album.toLowerCase();
-      if (albumMap.has(key)) {
-        albumMap.get(key)!.count += 1;
-      } else {
-        albumMap.set(key, {
-          album: s.album,
-          artist: s.artist,
-          count: 1,
-          language: s.language || 'English',
+    try {
+      const res = await fetch(
+        `/api/songs/lyrics?title=${encodeURIComponent(song.title)}&artist=${encodeURIComponent(song.artist)}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setViewingLyricsSong({
+          title: song.title,
+          artist: song.artist,
+          lyrics: data.lyrics || 'No lyrics available for this track yet.',
         });
       }
-    });
+    } catch (e) {
+      console.warn('Lyrics fetch error:', e);
+    } finally {
+      setLyricsLoading(false);
+    }
+  };
 
-    return Array.from(albumMap.values()).slice(0, 10);
-  }, [selectedLanguage, songs]);
+  // Handle Online Search & Play
+  const handleSearchAndPlayOnline = async (queryText: string) => {
+    if (!queryText.trim()) return;
+    setSearchingOnline(true);
+    setShowSuggestions(false);
 
-  // Active artist details
-  const activeArtistData = useMemo(() => {
-    if (!selectedArtist) return null;
+    try {
+      // Check if it exists in database songs
+      const existingMatch = songs.find(
+        (s) =>
+          s.title.toLowerCase().includes(queryText.toLowerCase()) ||
+          s.artist.toLowerCase().includes(queryText.toLowerCase())
+      );
+
+      if (existingMatch) {
+        onPlayTrack(existingMatch);
+        setSearchingOnline(false);
+        return;
+      }
+
+      // Check in trending songs
+      for (const ind of MUSIC_INDUSTRIES) {
+        const trendMatch = ind.top5.find(
+          (s) =>
+            s.title.toLowerCase().includes(queryText.toLowerCase()) ||
+            s.artist.toLowerCase().includes(queryText.toLowerCase())
+        );
+        if (trendMatch) {
+          const songObj: Song = {
+            id: trendMatch.id,
+            title: trendMatch.title,
+            artist: trendMatch.artist,
+            album: trendMatch.album,
+            genre: trendMatch.genre,
+            moodEmoji: trendMatch.moodEmoji,
+            audioUrl: trendMatch.audioUrl,
+            creatorUsername: 'trending',
+            likesCount: trendMatch.likesCount,
+            language: trendMatch.language,
+            description: trendMatch.description || '',
+            lyrics: trendMatch.lyrics,
+          };
+          onPlayTrack(songObj);
+          setSearchingOnline(false);
+          return;
+        }
+      }
+
+      // Otherwise, search YouTube stream directly and play
+      const res = await fetch(`/api/songs/youtube-search?title=${encodeURIComponent(queryText)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.videoId) {
+          const newSong: Song = {
+            id: `yt_${data.videoId}`,
+            title: queryText,
+            artist: 'Searched Music',
+            album: 'Online Stream',
+            genre: 'Hit Stream',
+            moodEmoji: '🔥',
+            audioUrl: `youtube:${data.videoId}`,
+            creatorUsername: currentUser?.username || 'listener',
+            likesCount: 1,
+            language: 'Various',
+            description: `Searched and played track: ${queryText}`,
+          };
+          onPlayTrack(newSong);
+        }
+      }
+    } catch (err) {
+      console.error('Search and play online error:', err);
+    } finally {
+      setSearchingOnline(false);
+    }
+  };
+
+  // Currently selected music industry object
+  const currentIndustryData = useMemo(() => {
     return (
-      FEATURED_ARTISTS.find(
-        (a) =>
-          a.name.toLowerCase() === selectedArtist.toLowerCase() ||
-          selectedArtist.toLowerCase().includes(a.name.toLowerCase())
-      ) || null
+      MUSIC_INDUSTRIES.find((item) => item.id === selectedIndustry) ||
+      MUSIC_INDUSTRIES[0]
     );
-  }, [selectedArtist]);
+  }, [selectedIndustry]);
 
-  // Filtered Songs according to Language, Artist, Album, Mood, and User Mood Playlists
+  // Filtered Songs according to Language, Mood, Liked, and Search query
   const filteredSongs = useMemo(() => {
     return songs.filter((s) => {
       // 1. Language filter
@@ -363,63 +479,31 @@ export default function CommunityFeed({
         return false;
       }
 
-      // 2. Only liked filter
-      if (onlyLiked && !likedSongIds.includes(s.id)) {
-        return false;
-      }
-
-      // 3. User mood playlist filter
-      if (activeMoodPlaylist) {
-        const taggedMoods = userMoodTags[s.id] || [];
-        const isSongInMood = taggedMoods.includes(activeMoodPlaylist) || s.moodEmoji === activeMoodPlaylist;
-        if (!isSongInMood) return false;
-      }
-
-      // 4. Mood filter
+      // 2. Mood filter from DB
       if (selectedMood && s.moodEmoji !== selectedMood) {
         return false;
       }
 
-      // 5. Artist filter
-      if (selectedArtist) {
-        const matchArtist = s.artist && s.artist.toLowerCase().includes(selectedArtist.toLowerCase());
-        if (!matchArtist) return false;
+      // 3. User Mood Playlist filter
+      if (activeMoodPlaylist) {
+        const tags = userMoodTags[s.id] || [];
+        if (!tags.includes(activeMoodPlaylist)) return false;
       }
 
-      // 6. Album filter
-      if (selectedAlbum) {
-        const matchAlbum = s.album && s.album.toLowerCase().includes(selectedAlbum.toLowerCase());
-        if (!matchAlbum) return false;
+      // 4. Only liked filter
+      if (onlyLiked && !likedSongIds.includes(s.id)) {
+        return false;
       }
 
-      // 7. Genre filter (e.g. Rap)
-      if (selectedGenreFilter === 'rap') {
-        const g = (s.genre || '').toLowerCase();
-        const t = (s.title || '').toLowerCase();
-        const a = (s.artist || '').toLowerCase();
-        const isRap =
-          g.includes('rap') ||
-          g.includes('hip-hop') ||
-          g.includes('hip hop') ||
-          g.includes('trap') ||
-          g.includes('drill') ||
-          a.includes('eminem') ||
-          a.includes('kendrick') ||
-          a.includes('drake') ||
-          a.includes('sidhu') ||
-          a.includes('karan aujla');
-        if (!isRap) return false;
-      }
-
-      // 8. Search query
+      // 5. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
           s.title.toLowerCase().includes(q) ||
           (s.artist && s.artist.toLowerCase().includes(q)) ||
           (s.album && s.album.toLowerCase().includes(q)) ||
-          (s.language && s.language.toLowerCase().includes(q)) ||
-          (s.genre && s.genre.toLowerCase().includes(q))
+          (s.genre && s.genre.toLowerCase().includes(q)) ||
+          (s.lyrics && s.lyrics.toLowerCase().includes(q))
         );
       }
 
@@ -428,385 +512,344 @@ export default function CommunityFeed({
   }, [
     songs,
     selectedLanguage,
+    selectedMood,
+    activeMoodPlaylist,
     onlyLiked,
     likedSongIds,
-    activeMoodPlaylist,
     userMoodTags,
-    selectedMood,
-    selectedArtist,
-    selectedAlbum,
-    selectedGenreFilter,
     searchQuery,
   ]);
 
   return (
     <div className="space-y-6">
-      {/* 1. LANGUAGE SELECTOR BAR */}
-      <div className="p-4 rounded-2xl glass-panel border border-cyan-500/20 glow-cyan space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-              <Globe size={18} />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                <span>Select Music Language</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold">
-                  {selectedLanguage === 'All' ? 'Worldwide All' : selectedLanguage}
-                </span>
-              </h3>
-              <p className="text-[11px] text-zinc-400">
-                Choose a language to showcase top singers, hit albums, and songs from that region.
-              </p>
-            </div>
-          </div>
-
-          {(selectedLanguage !== 'All' || selectedArtist || selectedAlbum || selectedMood || activeMoodPlaylist || onlyLiked) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedLanguage('All');
-                setSelectedArtist(null);
-                setSelectedAlbum(null);
-                setSelectedMood(null);
-                setActiveMoodPlaylist(null);
-                setOnlyLiked(false);
-                setSelectedGenreFilter(null);
-              }}
-              className="text-xs text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer bg-cyan-950/40 px-2.5 py-1 rounded-lg border border-cyan-500/30"
-            >
-              <X size={12} /> Reset All Filters
-            </button>
-          )}
-        </div>
-
-        {/* Language Selection Pills */}
-        <div className="flex flex-wrap gap-2 pt-1 select-none">
-          {WORLD_LANGUAGES.map((lang) => {
-            const isSelected = selectedLanguage === lang;
-            const flagMap: Record<string, string> = {
-              All: '🌍',
-              English: '🇺🇸',
-              Hindi: '🇮🇳',
-              Punjabi: '🪕',
-              Spanish: '🇪🇸',
-              Korean: '🇰🇷',
-              Tamil: '🌴',
-              Telugu: '🪘',
-              French: '🇫🇷',
-              Japanese: '🇯🇵',
-            };
-
-            return (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => {
-                  setSelectedLanguage(lang);
-                  setSelectedArtist(null);
-                  setSelectedAlbum(null);
-                }}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer select-none active:scale-95 border flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-cyan-500 text-black border-cyan-400 shadow-md shadow-cyan-500/30'
-                    : 'bg-zinc-900/80 text-zinc-300 border-zinc-800 hover:border-cyan-500/40 hover:text-white'
-                }`}
-              >
-                <span>{flagMap[lang] || '🎵'}</span>
-                <span>{lang === 'All' ? 'All Languages' : lang}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 2. REAL-TIME SEARCH (Google Queries + DB Songs, without similar mood representator) */}
-      <div ref={searchContainerRef} className="relative">
+      {/* 1. SMART SEARCH BAR (Instant Autocomplete & Play) */}
+      <div className="relative" ref={searchContainerRef}>
         <div className="relative">
-          <Search size={16} className="absolute left-3.5 top-3 text-zinc-400" />
+          <Search size={16} className="absolute left-3.5 top-3.5 text-zinc-400" />
           <input
             type="text"
-            placeholder="Search by song name, singer, album, or vibe... (e.g. The Weeknd, Arijit Singh, Kesariya, Blinding Lights)"
+            placeholder="Search any song by title, artist, or lyrics... (Press Enter to play instantly)"
             value={searchQuery}
             onFocus={() => setShowSuggestions(true)}
             onChange={(e) => {
               setSearchQuery(e.target.value);
               setShowSuggestions(true);
             }}
-            className="w-full pl-10 pr-10 py-2.5 bg-zinc-950/80 border border-zinc-800 focus:border-purple-500 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none transition font-semibold"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSearchAndPlayOnline(searchQuery);
+              }
+            }}
+            className="w-full pl-10 pr-24 py-3 bg-zinc-950/90 border border-zinc-800 focus:border-purple-500 rounded-2xl text-xs text-white placeholder-zinc-500 focus:outline-none transition font-semibold shadow-lg shadow-black/50"
           />
-          {searchQuery && (
+          <div className="absolute right-2.5 top-2 flex items-center gap-1.5">
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-zinc-500 hover:text-white p-1 transition cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-2.5 text-zinc-500 hover:text-white transition cursor-pointer"
+              onClick={() => handleSearchAndPlayOnline(searchQuery)}
+              disabled={searchingOnline || !searchQuery.trim()}
+              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 text-black font-extrabold text-xs rounded-xl shadow transition cursor-pointer flex items-center gap-1"
             >
-              <X size={15} />
+              {searchingOnline ? <Loader2 size={13} className="animate-spin" /> : <Play size={12} className="fill-black" />}
+              <span>Play</span>
             </button>
-          )}
+          </div>
         </div>
 
-        {/* Autocomplete Dropdown (Search queries and Library songs only) */}
+        {/* Suggestions Dropdown */}
         {showSuggestions && suggestions && (suggestions.queries.length > 0 || suggestions.dbSongs.length > 0) && (
-          <div className="absolute left-0 right-0 top-full mt-1.5 bg-zinc-950/95 backdrop-blur-xl border border-purple-500/30 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-zinc-900 animate-fade-in max-h-80 overflow-y-auto">
-            {suggestions.queries.length > 0 && (
-              <div className="p-2">
-                <p className="text-[9px] uppercase tracking-wider font-black text-zinc-500 px-2 py-1 flex items-center gap-1">
-                  <TrendingUp size={11} className="text-purple-400" />
-                  Related Search Words
+          <div className="absolute left-0 right-0 top-full mt-2 bg-zinc-950/95 border border-purple-500/40 rounded-2xl shadow-2xl z-50 p-2.5 divide-y divide-zinc-900 animate-fade-in backdrop-blur-xl">
+            {suggestions.dbSongs.length > 0 && (
+              <div className="pb-2 space-y-1">
+                <p className="text-[10px] font-black uppercase text-purple-400 px-2 tracking-wider">
+                  In Gana Library
                 </p>
-                <div className="space-y-0.5">
-                  {suggestions.queries.map((q, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        setSearchQuery(q);
-                        setShowSuggestions(false);
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-zinc-300 hover:text-white hover:bg-purple-500/10 flex items-center justify-between transition cursor-pointer font-medium group"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Search size={12} className="text-zinc-500 group-hover:text-purple-400" />
-                        <span>{q}</span>
-                      </span>
-                      <ArrowRight size={11} className="text-zinc-600 group-hover:text-purple-400 opacity-0 group-hover:opacity-100 transition" />
-                    </button>
-                  ))}
-                </div>
+                {suggestions.dbSongs.map((song: any) => (
+                  <div
+                    key={song.id}
+                    onClick={() => {
+                      onPlayTrack(song);
+                      setShowSuggestions(false);
+                    }}
+                    className="p-2 rounded-xl hover:bg-purple-600/15 transition cursor-pointer flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-2 rounded-lg bg-zinc-900 text-purple-400 group-hover:bg-purple-600 group-hover:text-black transition">
+                        <Play size={12} className="fill-current" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">{song.title}</p>
+                        <p className="text-[11px] text-zinc-400 truncate">{song.artist}</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-purple-300 font-mono">
+                      {song.moodEmoji} {song.genre}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
 
-            {suggestions.dbSongs.length > 0 && (
-              <div className="p-2 bg-purple-950/15">
-                <p className="text-[9px] uppercase tracking-wider font-black text-purple-400 px-2 py-1 flex items-center gap-1">
-                  <Music size={11} />
-                  Matching Songs in Library
+            {suggestions.queries.length > 0 && (
+              <div className="pt-2 space-y-0.5">
+                <p className="text-[10px] font-black uppercase text-zinc-400 px-2 tracking-wider flex items-center gap-1">
+                  <TrendingUp size={11} className="text-purple-400" />
+                  <span>Trending Song Keywords</span>
                 </p>
-                <div className="space-y-0.5">
-                  {suggestions.dbSongs.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => {
-                        onPlayTrack(s);
-                        setShowSuggestions(false);
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-zinc-300 hover:text-white hover:bg-purple-500/20 flex items-center justify-between transition cursor-pointer font-medium"
-                    >
-                      <span className="flex items-center gap-2 truncate">
-                        <span>{s.moodEmoji}</span>
-                        <span className="font-bold text-white truncate">{s.title}</span>
-                        <span className="text-zinc-400 text-[11px] truncate">• {s.artist}</span>
-                      </span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-900 text-cyan-400 font-mono shrink-0">
-                        {s.language || s.genre}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                {suggestions.queries.map((q, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      setSearchQuery(q);
+                      handleSearchAndPlayOnline(q);
+                    }}
+                    className="p-2 rounded-xl text-xs text-zinc-300 hover:text-white hover:bg-purple-600/15 flex items-center justify-between cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Search size={13} className="text-zinc-500" />
+                      <span className="font-semibold">{q}</span>
+                    </span>
+                    <Play size={12} className="text-purple-400" />
+                  </div>
+                ))}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* 3. TOP SINGERS FROM ALL OVER THE WORLD */}
-      <div className="p-5 rounded-2xl glass-panel border border-purple-500/20 glow-purple space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-              <span>🎤</span>
-              <span>Top Singers from All Over the World</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold">
-                {topSingers.length} Artists
-              </span>
-            </h3>
+      {/* 2. DAILY TRENDING 5 SONGS ACCORDING TO MUSIC INDUSTRY */}
+      <div className="p-5 rounded-2xl glass-panel border border-purple-500/30 glow-purple bg-gradient-to-r from-purple-950/40 via-zinc-950 to-cyan-950/20 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 rounded-xl bg-gradient-to-tr from-purple-600 to-amber-500 text-black shadow-lg shadow-purple-600/25 flex items-center justify-center">
+              <Flame size={20} strokeWidth={2.5} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black text-white">
+                  Daily Trending Top 5 Songs
+                </h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold uppercase tracking-wider">
+                  {currentIndustryData.badge}
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400">
+                {currentIndustryData.description}
+              </p>
+            </div>
           </div>
-
-          {selectedArtist && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedArtist(null);
-                setSelectedAlbum(null);
-              }}
-              className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
-            >
-              <X size={12} /> Show All Singers
-            </button>
-          )}
         </div>
 
-        {/* Singer Pills Grid */}
-        <div className="flex flex-wrap gap-2.5 select-none">
-          {topSingers.map((singer) => {
-            const isSelected = selectedArtist?.toLowerCase() === singer.name.toLowerCase();
+        {/* Industry Selector Tabs (Bollywood, Tollywood, Hollywood, etc.) */}
+        <div className="flex flex-wrap gap-2 select-none">
+          {MUSIC_INDUSTRIES.map((ind) => {
+            const isSelected = selectedIndustry === ind.id;
             return (
               <button
-                key={singer.id}
+                key={ind.id}
                 type="button"
-                onClick={() => {
-                  if (isSelected) {
-                    setSelectedArtist(null);
-                    setSelectedAlbum(null);
-                  } else {
-                    setSelectedArtist(singer.name);
-                    setSelectedAlbum(null);
-                  }
-                }}
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer select-none active:scale-95 border flex items-center gap-2 ${
+                onClick={() => setSelectedIndustry(ind.id)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer select-none active:scale-95 border flex items-center gap-1.5 ${
                   isSelected
                     ? 'bg-purple-600 text-black border-purple-400 shadow-lg shadow-purple-600/30 font-black'
-                    : 'bg-zinc-900/90 text-zinc-200 border-zinc-800 hover:border-purple-500/50 hover:text-white'
+                    : 'bg-zinc-900/90 text-zinc-300 border-zinc-800 hover:border-purple-500/50 hover:text-white'
                 }`}
-                title={`${singer.name} (${singer.country}) - ${singer.genre}`}
               >
-                <span className="text-sm">{singer.avatarEmoji}</span>
-                <span>{singer.name}</span>
-                <span
-                  className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
-                    isSelected ? 'bg-black/20 text-black font-extrabold' : 'bg-zinc-800 text-zinc-400'
-                  }`}
-                >
-                  {singer.albums.length} alb
-                </span>
+                <span>{ind.icon}</span>
+                <span>{ind.name.split(' ')[0]}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Active Artist Albums Sub-row */}
-        {selectedArtist && activeArtistData && (
-          <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/40 animate-fade-in space-y-2 mt-2">
-            <div className="flex items-center justify-between text-xs text-purple-300 font-bold">
-              <span className="flex items-center gap-1.5">
-                <span>💿</span>
-                <span>Albums by <span className="text-white underline">{activeArtistData.name}</span>:</span>
-              </span>
-              {selectedAlbum && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedAlbum(null)}
-                  className="text-[10px] text-zinc-400 hover:text-white cursor-pointer"
-                >
-                  Show all albums
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedAlbum(null)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  selectedAlbum === null
-                    ? 'bg-purple-500 text-black font-extrabold'
-                    : 'bg-zinc-900 text-zinc-300 hover:text-white border border-zinc-800'
+        {/* Top 5 Trending Cards List */}
+        <div className="space-y-2.5 pt-1">
+          {currentIndustryData.top5.map((track, idx) => {
+            const rank = idx + 1;
+            const rankBadges = ['🥇 #1', '🥈 #2', '🥉 #3', '#4', '#5'];
+            const rankColors = [
+              'text-yellow-400 border-yellow-500/40 bg-yellow-500/10',
+              'text-zinc-300 border-zinc-400/40 bg-zinc-400/10',
+              'text-amber-500 border-amber-600/40 bg-amber-600/10',
+              'text-purple-400 border-purple-500/30 bg-purple-500/10',
+              'text-cyan-400 border-cyan-500/30 bg-cyan-500/10',
+            ];
+
+            const songObj: Song = {
+              id: track.id,
+              title: track.title,
+              artist: track.artist,
+              album: track.album,
+              genre: track.genre,
+              moodEmoji: track.moodEmoji,
+              audioUrl: track.audioUrl,
+              creatorUsername: 'trending',
+              likesCount: track.likesCount,
+              language: track.language,
+              description: track.description || '',
+              lyrics: track.lyrics,
+            };
+
+            const isCurrentPlaying = currentTrack?.id === track.id && isPlaying;
+            const isLiked = likedSongIds.includes(track.id);
+
+            return (
+              <div
+                key={track.id}
+                className={`p-3.5 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  isCurrentPlaying
+                    ? 'bg-purple-950/50 border-purple-500/60 shadow-lg shadow-purple-600/20'
+                    : 'bg-zinc-950/80 border-zinc-850 hover:border-purple-500/40'
                 }`}
               >
-                All {activeArtistData.name} Tracks
-              </button>
-              {activeArtistData.albums.map((albumName) => {
-                const isAlbumActive = selectedAlbum?.toLowerCase() === albumName.toLowerCase();
-                return (
-                  <button
-                    key={albumName}
-                    type="button"
-                    onClick={() => setSelectedAlbum(isAlbumActive ? null : albumName)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border flex items-center gap-1 ${
-                      isAlbumActive
-                        ? 'bg-purple-500 text-black border-purple-400 font-black shadow'
-                        : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-purple-500/40 hover:text-white'
+                {/* Left: Rank, Play Button, Track Title */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className={`text-xs font-black font-mono px-2 py-1 rounded-lg border shrink-0 ${
+                      rankColors[idx]
                     }`}
                   >
-                    <span>💿</span>
-                    <span>{albumName}</span>
+                    {rankBadges[idx]}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => onPlayTrack(songObj)}
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition cursor-pointer shrink-0 shadow active:scale-95 ${
+                      isCurrentPlaying
+                        ? 'bg-purple-500 text-black animate-pulse'
+                        : 'bg-zinc-900 hover:bg-purple-600 text-zinc-200 hover:text-black border border-zinc-800'
+                    }`}
+                    title={isCurrentPlaying ? 'Pause' : 'Play song'}
+                  >
+                    {isCurrentPlaying ? <Pause size={16} /> : <Play size={16} className="fill-current ml-0.5" />}
                   </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
 
-      {/* 4. TOP ALBUMS SHOWCASE IN SELECTED LANGUAGE */}
-      {topAlbums.length > 0 && !selectedArtist && (
-        <div className="p-5 rounded-2xl glass-panel border border-zinc-850 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-              <Disc size={16} className="text-cyan-400" />
-              <span>Top Albums {selectedLanguage !== 'All' ? `(${selectedLanguage})` : 'Worldwide'}</span>
-            </h3>
-            {selectedAlbum && (
-              <button
-                type="button"
-                onClick={() => setSelectedAlbum(null)}
-                className="text-xs text-cyan-400 hover:text-cyan-300 font-bold cursor-pointer"
-              >
-                Clear Album Filter
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {topAlbums.map((item) => {
-              const isSelected = selectedAlbum?.toLowerCase() === item.album.toLowerCase();
-              return (
-                <div
-                  key={item.album}
-                  onClick={() => setSelectedAlbum(isSelected ? null : item.album)}
-                  className={`p-3 rounded-xl border transition cursor-pointer select-none flex flex-col justify-between gap-2 ${
-                    isSelected
-                      ? 'bg-cyan-950/60 border-cyan-400 shadow-md shadow-cyan-500/20'
-                      : 'bg-zinc-950/70 border-zinc-850 hover:border-cyan-500/40 hover:bg-zinc-900/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-base">
-                      💿
-                    </div>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-zinc-900 text-zinc-400 font-mono">
-                      {item.language}
-                    </span>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-white truncate" title={item.album}>
-                      {item.album}
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-black text-white truncate" title={track.title}>
+                      {track.title}
                     </h4>
-                    <p className="text-[10px] text-zinc-400 truncate mt-0.5">
-                      {item.artist}
+                    <p className="text-xs text-purple-300 font-semibold truncate">
+                      {track.artist} • <span className="text-zinc-400">{track.album}</span>
                     </p>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
-      {/* 5. VIBE & USER MOOD PLAYLIST FILTERS ("Add song according to mood") */}
+                {/* Right: Actions (Like / Unlike, Lyrics, Mood, Share) */}
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-400 font-mono hidden md:inline-block">
+                    {track.genre}
+                  </span>
+
+                  {/* Lyrics Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenLyrics(songObj)}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-purple-950/60 border border-zinc-800 hover:border-purple-500/40 text-xs font-bold text-zinc-300 hover:text-white transition flex items-center gap-1 cursor-pointer"
+                    title="View song lyrics"
+                  >
+                    <BookOpen size={13} className="text-purple-400" />
+                    <span>Lyrics</span>
+                  </button>
+
+                  {/* Like / Unlike Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => handleLike(track.id)}
+                    className={`px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 active:scale-95 ${
+                      isLiked
+                        ? 'bg-red-500/20 border-red-500/40 text-red-400 font-bold'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-red-400'
+                    }`}
+                    title={isLiked ? 'Unlike song' : 'Like song'}
+                  >
+                    <Heart size={13} className={isLiked ? 'fill-red-400 text-red-400' : ''} />
+                    <span className="text-[11px] font-bold">
+                      {track.likesCount + (isLiked ? 1 : 0)}
+                    </span>
+                  </button>
+
+                  {/* Add to Mood Button */}
+                  <div className="relative mood-popover-container">
+                    <button
+                      type="button"
+                      onClick={() => setMoodPickerSongId(moodPickerSongId === track.id ? null : track.id)}
+                      className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 transition cursor-pointer"
+                      title="Add to mood playlist"
+                    >
+                      <Smile size={14} />
+                    </button>
+
+                    {moodPickerSongId === track.id && (
+                      <div className="absolute right-0 bottom-full mb-2 bg-zinc-950/95 border border-amber-500/40 p-3 rounded-xl shadow-2xl z-40 w-64 space-y-2 animate-fade-in backdrop-blur-md">
+                        <p className="text-[10px] uppercase tracking-wider font-black text-amber-400 flex items-center gap-1">
+                          <span>✨</span> Save to Mood Playlist:
+                        </p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {moods.slice(0, 8).map((m) => {
+                            const isTagged = (userMoodTags[track.id] || []).includes(m.emoji);
+                            return (
+                              <button
+                                key={m.emoji}
+                                type="button"
+                                onClick={() => handleToggleSongMood(track.id, m.emoji)}
+                                className={`px-2 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+                                  isTagged
+                                    ? 'bg-amber-500 text-black border-amber-400'
+                                    : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:bg-zinc-850'
+                                }`}
+                              >
+                                <span>{m.emoji}</span>
+                                <span className="truncate">{getMoodName(m.emoji, t)}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. VIBE & USER MOOD PLAYLIST FILTERS */}
       <div className="p-4 rounded-2xl glass-panel border border-zinc-850 space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-              <span>🔥</span>
-              <span>Filter by Vibe & Mood Playlists</span>
+              <span>🎧</span>
+              <span>Filter Library by Mood & Playlists</span>
             </h3>
           </div>
 
-          {/* Quick Filter: My Liked Songs */}
-          <button
-            type="button"
-            onClick={() => setOnlyLiked(!onlyLiked)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer select-none active:scale-95 border flex items-center gap-1.5 ${
-              onlyLiked
-                ? 'bg-red-600 text-white border-red-500 shadow-md shadow-red-500/30'
-                : 'bg-zinc-900 text-red-400 border-zinc-800 hover:border-red-500/40'
-            }`}
-          >
-            <Heart size={12} className={onlyLiked ? 'fill-white' : 'fill-red-400'} />
-            <span>Liked Songs ({likedSongIds.length})</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Quick Filter: My Liked Songs */}
+            <button
+              type="button"
+              onClick={() => setOnlyLiked(!onlyLiked)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer select-none active:scale-95 border flex items-center gap-1.5 ${
+                onlyLiked
+                  ? 'bg-red-600 text-white border-red-500 shadow-md shadow-red-500/30'
+                  : 'bg-zinc-900 text-red-400 border-zinc-800 hover:border-red-500/40'
+              }`}
+            >
+              <Heart size={12} className={onlyLiked ? 'fill-white' : 'fill-red-400'} />
+              <span>Liked Songs ({likedSongIds.length})</span>
+            </button>
+          </div>
         </div>
 
         {/* Mood Pill Buttons */}
@@ -823,7 +866,7 @@ export default function CommunityFeed({
                 : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
             }`}
           >
-            {t('feed.all_moods')}
+            All Moods
           </button>
 
           {moods.map((m) => {
@@ -855,25 +898,28 @@ export default function CommunityFeed({
         </div>
       </div>
 
-      {/* 6. SONG CARDS LIST */}
+      {/* 4. MAIN COMMUNITY SONG CARDS LIST */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-xs font-bold text-zinc-400 px-1">
-          <span>Showing {filteredSongs.length} Tracks</span>
-          {(selectedArtist || selectedAlbum || selectedLanguage !== 'All' || selectedMood || onlyLiked) && (
-            <span className="text-[11px] text-purple-400">
-              Active filter: {[
-                selectedLanguage !== 'All' ? selectedLanguage : null,
-                selectedArtist,
-                selectedAlbum ? `Album: ${selectedAlbum}` : null,
-                selectedMood,
-                onlyLiked ? 'Liked Only' : null,
-              ].filter(Boolean).join(' • ')}
-            </span>
+          <span>Showing {filteredSongs.length} Tracks in Library</span>
+          {(selectedLanguage !== 'All' || selectedMood || onlyLiked || searchQuery) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedLanguage('All');
+                setSelectedMood(null);
+                setOnlyLiked(false);
+                setSearchQuery('');
+              }}
+              className="text-purple-400 hover:underline cursor-pointer flex items-center gap-1"
+            >
+              <X size={12} /> Clear all filters
+            </button>
           )}
         </div>
 
         {loading ? (
-          <div className="py-16 text-center text-zinc-500 text-xs flex items-center justify-center gap-2">
+          <div className="p-12 text-center flex items-center justify-center gap-2 text-zinc-400 text-xs font-bold">
             <Loader2 size={16} className="animate-spin text-purple-400" />
             <span>Loading tracks from library...</span>
           </div>
@@ -881,7 +927,7 @@ export default function CommunityFeed({
           <div className="p-8 text-center rounded-2xl glass-panel border border-zinc-850 space-y-2">
             <p className="text-zinc-400 text-xs font-bold">No songs found matching current filters.</p>
             <p className="text-zinc-500 text-[11px]">
-              Try selecting &ldquo;All Languages&rdquo; or clearing your mood/artist filter.
+              Try searching a song name above or click on one of the Daily Trending songs!
             </p>
           </div>
         ) : (
@@ -894,9 +940,9 @@ export default function CommunityFeed({
               return (
                 <div
                   key={song.id}
-                  className={`p-4 rounded-2xl glass-panel border transition relative flex flex-col justify-between gap-3 ${
+                  className={`p-4 rounded-2xl transition border space-y-3 ${
                     isCurrent
-                      ? 'border-purple-500/80 bg-purple-950/25 shadow-lg shadow-purple-500/20'
+                      ? 'border-purple-500/60 bg-gradient-to-r from-purple-950/40 via-zinc-900/90 to-purple-950/20 shadow-lg shadow-purple-600/20'
                       : 'border-zinc-850 bg-zinc-950/60 hover:border-zinc-700'
                   }`}
                 >
@@ -934,16 +980,29 @@ export default function CommunityFeed({
 
                         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                           <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 font-bold">
-                            {song.language || 'English'}
+                            {song.industry || song.language || 'Bollywood'}
                           </span>
                           <span className="text-[9px] px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-400 font-semibold border border-zinc-800">
                             {song.moodEmoji} {song.genre}
                           </span>
-                          {songMoods.length > 0 && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 font-bold flex items-center gap-1">
-                              <span>Mood:</span> {songMoods.join(' ')}
+
+                          {/* Mood Tags with Remove Option */}
+                          {songMoods.map((mEmoji) => (
+                            <span
+                              key={mEmoji}
+                              className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold flex items-center gap-1"
+                            >
+                              <span>{mEmoji}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSongMood(song.id, mEmoji)}
+                                className="text-amber-400 hover:text-red-400 cursor-pointer ml-0.5"
+                                title="Remove from this mood playlist"
+                              >
+                                <X size={10} />
+                              </button>
                             </span>
-                          )}
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -958,7 +1017,7 @@ export default function CommunityFeed({
                             ? 'bg-red-500/20 border-red-500/40 text-red-400'
                             : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-red-400'
                         }`}
-                        title="Like this song"
+                        title={isLiked ? 'Unlike this song' : 'Like this song'}
                       >
                         <Heart size={14} className={isLiked ? 'fill-red-400' : ''} />
                         <span className="text-[11px] font-bold">{song.likesCount}</span>
@@ -966,60 +1025,73 @@ export default function CommunityFeed({
                     </div>
                   </div>
 
-                  {/* Description note */}
-                  {song.description && (
-                    <p className="text-[11px] text-zinc-400 line-clamp-1 italic px-1">
-                      &quot;{song.description}&quot;
-                    </p>
-                  )}
-
                   {/* Actions Toolbar */}
                   <div className="pt-2 border-t border-zinc-900/80 flex items-center justify-between text-xs">
-                    {/* Left: User "Add to Mood" Button */}
-                    <div className="relative mood-popover-container">
+                    {/* Left: Lyrics & Add to Mood Buttons */}
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setMoodPickerSongId(moodPickerSongId === song.id ? null : song.id)}
-                        className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/40 text-amber-300 text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer"
-                        title="Add this song according to your mood"
+                        onClick={() => handleOpenLyrics(song)}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-purple-500/40 text-purple-300 text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer"
+                        title="View Lyrics"
                       >
-                        <Smile size={12} className="text-amber-400" />
-                        <span>Add to Mood</span>
+                        <BookOpen size={12} className="text-purple-400" />
+                        <span>Lyrics</span>
                       </button>
 
-                      {/* Mood Picker Popover */}
-                      {moodPickerSongId === song.id && (
-                        <div className="absolute left-0 bottom-full mb-2 bg-zinc-950/95 border border-amber-500/40 p-3 rounded-xl shadow-2xl z-40 w-64 space-y-2 animate-fade-in backdrop-blur-md">
-                          <p className="text-[10px] uppercase tracking-wider font-black text-amber-400 flex items-center gap-1">
-                            <span>✨</span> Save to My Mood Playlist:
-                          </p>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {moods.slice(0, 8).map((m) => {
-                              const isTagged = songMoods.includes(m.emoji);
-                              return (
+                      <div className="relative mood-popover-container">
+                        <button
+                          type="button"
+                          onClick={() => setMoodPickerSongId(moodPickerSongId === song.id ? null : song.id)}
+                          className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/40 text-amber-300 text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer"
+                          title="Add this song according to your mood"
+                        >
+                          <Smile size={12} className="text-amber-400" />
+                          <span>Mood</span>
+                        </button>
+
+                        {moodPickerSongId === song.id && (
+                          <div className="absolute left-0 bottom-full mb-2 bg-zinc-950/95 border border-amber-500/40 p-3 rounded-xl shadow-2xl z-40 w-64 space-y-2 animate-fade-in backdrop-blur-md">
+                            <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-black text-amber-400">
+                              <span>Save to Mood Playlist</span>
+                              {songMoods.length > 0 && (
                                 <button
-                                  key={m.emoji}
                                   type="button"
-                                  onClick={() => handleToggleSongMood(song.id, m.emoji)}
-                                  className={`px-2 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition cursor-pointer border ${
-                                    isTagged
-                                      ? 'bg-amber-500 text-black border-amber-400'
-                                      : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:bg-zinc-850'
-                                  }`}
+                                  onClick={() => handleRemoveSongFromAllMoods(song.id)}
+                                  className="text-red-400 hover:underline cursor-pointer lowercase"
                                 >
-                                  <span>{m.emoji}</span>
-                                  <span className="truncate">{getMoodName(m.emoji, t)}</span>
+                                  clear all
                                 </button>
-                              );
-                            })}
+                              )}
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {moods.slice(0, 8).map((m) => {
+                                const isTagged = songMoods.includes(m.emoji);
+                                return (
+                                  <button
+                                    key={m.emoji}
+                                    type="button"
+                                    onClick={() => handleToggleSongMood(song.id, m.emoji)}
+                                    className={`px-2 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+                                      isTagged
+                                        ? 'bg-amber-500 text-black border-amber-400'
+                                        : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:bg-zinc-850'
+                                    }`}
+                                  >
+                                    <span>{m.emoji}</span>
+                                    <span className="truncate">{getMoodName(m.emoji, t)}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
 
                     {/* Right: Comments, Social Share & Delete */}
                     <div className="flex items-center gap-1.5">
-                      {/* Comments count */}
+                      {/* Comments toggle */}
                       <button
                         type="button"
                         onClick={() => toggleComments(song.id)}
@@ -1027,6 +1099,7 @@ export default function CommunityFeed({
                         title="View comments"
                       >
                         <MessageSquare size={13} />
+                        <span className="text-[11px] font-bold">{song.comments?.length || 0}</span>
                       </button>
 
                       {/* Share Popover */}
@@ -1094,19 +1167,33 @@ export default function CommunityFeed({
                     </div>
                   </div>
 
-                  {/* Comments Accordion */}
+                  {/* Comments Accordion with Delete Option */}
                   {expandedCommentsSongId === song.id && (
                     <div className="pt-2 border-t border-zinc-900 space-y-2 animate-fade-in">
-                      <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1 text-xs">
+                      <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 text-xs">
                         {commentsLoading ? (
                           <div className="text-center py-2 text-zinc-500 text-[11px]">Loading comments...</div>
                         ) : songComments.length === 0 ? (
                           <div className="text-center py-2 text-zinc-500 text-[11px]">No comments yet. Be first!</div>
                         ) : (
                           songComments.map((c) => (
-                            <div key={c.id} className="p-2 bg-zinc-900/60 rounded-lg flex items-start gap-2">
-                              <span className="font-bold text-purple-400 text-[10px]">@{c.username}:</span>
-                              <span className="text-zinc-300 text-[11px] flex-1">{c.text}</span>
+                            <div key={c.id} className="p-2 bg-zinc-900/60 rounded-lg flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex items-start gap-1.5">
+                                <span className="font-bold text-purple-400 text-[10px] shrink-0">@{c.username}:</span>
+                                <span className="text-zinc-300 text-[11px] break-words">{c.text}</span>
+                              </div>
+
+                              {/* Delete Comment Option (Author or Admin) */}
+                              {(currentUser?.username === c.username || currentUser?.username === 'admin') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteComment(c.id)}
+                                  className="text-zinc-500 hover:text-red-400 p-0.5 transition cursor-pointer shrink-0"
+                                  title="Delete your comment"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
                             </div>
                           ))
                         )}
@@ -1116,13 +1203,15 @@ export default function CommunityFeed({
                       <form onSubmit={(e) => handleAddComment(e, song.id)} className="flex gap-2">
                         <input
                           type="text"
-                          placeholder="Write a comment..."
+                          placeholder={currentUser ? 'Write a comment...' : 'Sign in to comment'}
+                          disabled={!currentUser}
                           value={newCommentText}
                           onChange={(e) => setNewCommentText(e.target.value)}
                           className="flex-1 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-medium"
                         />
                         <button
                           type="submit"
+                          disabled={!currentUser || !newCommentText.trim()}
                           className="px-3 py-1.5 bg-purple-600 text-black font-bold text-xs rounded-lg hover:bg-purple-500 transition cursor-pointer"
                         >
                           <Send size={12} />
@@ -1136,6 +1225,57 @@ export default function CommunityFeed({
           </div>
         )}
       </div>
+
+      {/* 5. LYRICS VIEWER MODAL */}
+      {viewingLyricsSong && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="w-full max-w-lg p-6 rounded-2xl bg-zinc-950 border border-purple-500/40 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-white flex items-center gap-2">
+                  <BookOpen size={18} className="text-purple-400" />
+                  <span>{viewingLyricsSong.title}</span>
+                </h3>
+                <p className="text-xs text-purple-300 font-semibold">{viewingLyricsSong.artist}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(viewingLyricsSong.lyrics);
+                    setLyricsCopied(true);
+                    setTimeout(() => setLyricsCopied(false), 2000);
+                  }}
+                  className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-850 border border-zinc-700 text-xs font-bold text-white rounded-lg transition cursor-pointer flex items-center gap-1"
+                >
+                  {lyricsCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  <span>{lyricsCopied ? 'Copied' : 'Copy'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewingLyricsSong(null)}
+                  className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 bg-zinc-900/60 rounded-xl border border-zinc-800 max-h-96 overflow-y-auto">
+              {lyricsLoading ? (
+                <div className="text-center py-8 text-zinc-400 text-xs flex items-center justify-center gap-2">
+                  <Loader2 size={16} className="animate-spin text-purple-400" />
+                  <span>Searching verified lyrics...</span>
+                </div>
+              ) : (
+                <pre className="text-xs text-zinc-200 font-mono whitespace-pre-wrap leading-relaxed text-center">
+                  {viewingLyricsSong.lyrics}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

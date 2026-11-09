@@ -3,7 +3,7 @@ export interface User {
   username: string;
   email: string;
   isPrivate: boolean;
-  role: 'USER' | 'SINGER' | 'ADMIN';
+  role: 'USER' | 'SINGER' | 'STORY_WRITER' | 'ADMIN';
   createdAt?: string | Date;
 }
 
@@ -15,11 +15,14 @@ export interface Song {
   audioUrl: string;
   creatorUsername: string;
   likesCount: number;
+  likedBy?: string[];
   createdAt?: string | Date;
   comments?: Comment[];
   artist: string;
   album: string;
   language: string;
+  industry?: string; // 'Bollywood' | 'Hollywood' | 'Tollywood' | 'Kollywood' | 'Punjabi' etc.
+  lyrics?: string;
   description: string;
 }
 
@@ -66,4 +69,44 @@ export interface GlobalTrack {
   previewUrl: string;
   artworkUrl100: string;
   collectionName?: string;
+}
+
+export interface StoryChapter {
+  id: string;
+  title: string;
+  timelineOrder: number;
+  audioUrl: string;
+  duration?: string | null;
+  summary?: string | null;
+  authorUsername: string;
+  albumId: string;
+  likesCount: number;
+  dislikesCount: number;
+  likedBy?: string[];
+  dislikedBy?: string[];
+  createdAt?: string | Date;
+}
+
+export interface StoryComment {
+  id: string;
+  text: string;
+  username: string;
+  albumId: string;
+  createdAt?: string | Date;
+}
+
+export interface StoryAlbum {
+  id: string;
+  title: string;
+  description: string;
+  authorUsername: string;
+  genre: string;
+  coverUrl?: string | null;
+  likesCount: number;
+  dislikesCount: number;
+  likedBy?: string[];
+  dislikedBy?: string[];
+  createdAt?: string | Date;
+  chapters?: StoryChapter[];
+  comments?: StoryComment[];
 }

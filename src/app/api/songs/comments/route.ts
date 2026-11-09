@@ -65,3 +65,52 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
+
+// DELETE: Delete a comment (by author or admin)
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    let id = searchParams.get('id');
+    let username = searchParams.get('username');
+
+    if (!id) {
+      try {
+        const body = await request.json();
+        id = body.id;
+        username = body.username;
+      } catch {
+        // query params only
+      }
+    }
+
+    if (!id) {
+      return NextResponse.json({ error: 'Comment ID is required' }, { status: 400 });
+    }
+
+    const existingComment = await prisma.comment.findUnique({
+      where: { id },
+    });
+
+    if (!existingComment) {
+      return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
+    }
+
+    // Allow author or admin to delete
+    if (
+      username &&
+      username.toLowerCase() !== existingComment.username.toLowerCase() &&
+      username.toLowerCase() !== 'admin'
+    ) {
+      return NextResponse.json({ error: 'Unauthorized to delete this comment' }, { status: 403 });
+    }
+
+    await prisma.comment.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true, message: 'Comment deleted successfully' }, { status: 200 });
+  } catch (error) {
+    console.error('Comments DELETE Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}

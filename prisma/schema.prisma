@@ -15,7 +15,7 @@ model User {
   username  String   @unique
   email     String   @unique
   isPrivate Boolean  @default(false)
-  role      String   @default("USER") // "USER" | "SINGER" | "ADMIN"
+  role      String   @default("USER") // "USER" | "SINGER" | "STORY_WRITER" | "ADMIN"
   createdAt DateTime @default(now())
 }
 
@@ -24,14 +24,17 @@ model Song {
   title           String
   genre           String
   moodEmoji       String
-  audioUrl        String   // Path to generated audio file or upload path
+  audioUrl        String   // Path to audio file or stream URL
   creatorUsername String
   createdAt       DateTime  @default(now())
   likesCount      Int       @default(0)
+  likedBy         String[]  @default([])
   comments        Comment[]
   artist          String    @default("Unknown Singer")
   album           String    @default("Single")
   language        String    @default("English")
+  industry        String    @default("Bollywood") // "Bollywood" | "Hollywood" | "Tollywood" | "Kollywood" | "Punjabi"
+  lyrics          String    @default("")
   description     String    @default("")
 }
 
@@ -62,4 +65,46 @@ model Comment {
   songId    String   @db.ObjectId
   song      Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+}
+
+model StoryAlbum {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  title          String         // Story / Novel name
+  description    String         @default("")
+  authorUsername String
+  genre          String         @default("Fiction")
+  coverUrl       String?
+  likesCount     Int            @default(0)
+  dislikesCount  Int            @default(0)
+  likedBy        String[]       @default([])
+  dislikedBy     String[]       @default([])
+  createdAt      DateTime       @default(now())
+  chapters       StoryChapter[]
+  comments       StoryComment[]
+}
+
+model StoryChapter {
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  title          String      // e.g. "Chapter 1: The Journey Begins"
+  timelineOrder  Int         @default(1) // Chronological order
+  audioUrl       String      // Audio file path or URL
+  duration       String?     @default("10:00")
+  summary        String?     @default("")
+  authorUsername String
+  albumId        String      @db.ObjectId
+  album          StoryAlbum  @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  likesCount     Int         @default(0)
+  dislikesCount  Int         @default(0)
+  likedBy        String[]    @default([])
+  dislikedBy     String[]    @default([])
+  createdAt      DateTime    @default(now())
+}
+
+model StoryComment {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  text      String
+  username  String
+  albumId   String     @db.ObjectId
+  album     StoryAlbum @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
 }

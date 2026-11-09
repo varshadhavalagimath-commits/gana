@@ -3,12 +3,14 @@ import prisma from '@/lib/prisma';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-// GET: Fetch all songs, optionally filtered by mood and language
+// GET: Fetch all songs, optionally filtered by mood, language, industry, and query
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const moodEmoji = searchParams.get('moodEmoji');
     const language = searchParams.get('language');
+    const industry = searchParams.get('industry');
+    const q = searchParams.get('q');
 
     const whereClause: Record<string, any> = {};
     if (moodEmoji) {
@@ -17,10 +19,26 @@ export async function GET(request: Request) {
     if (language && language !== 'All') {
       whereClause.language = language;
     }
+    if (industry && industry !== 'All') {
+      whereClause.industry = industry;
+    }
+    if (q) {
+      whereClause.OR = [
+        { title: { contains: q } },
+        { artist: { contains: q } },
+        { album: { contains: q } },
+        { lyrics: { contains: q } },
+      ];
+    }
 
     const songs = await prisma.song.findMany({
       where: whereClause,
-      orderBy: { createdAt: 'desc' }
+      include: {
+        comments: {
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
     return NextResponse.json({ songs }, { status: 200 });
@@ -30,11 +48,11 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: Upload recorded audio or create song entry
+// POST: Upload recorded audio or create song entry with lyrics & industry
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get('content-type') || '';
-    
+
     let title = '';
     let genre = '';
     let moodEmoji = '🔥';
@@ -43,6 +61,8 @@ export async function POST(request: Request) {
     let artist = 'Unknown Singer';
     let album = 'Single';
     let language = 'English';
+    let industry = 'Bollywood';
+    let lyrics = '';
     let description = '';
 
     if (contentType.includes('application/json')) {
@@ -55,23 +75,27 @@ export async function POST(request: Request) {
       artist = json.artist || 'Unknown Singer';
       album = json.album || 'Single';
       language = json.language || 'English';
+      industry = json.industry || 'Bollywood';
+      lyrics = json.lyrics || '';
       description = json.description || '';
     } else {
       const formData = await request.formData();
-      title = formData.get('title') as string;
-      genre = formData.get('genre') as string;
+      title = (formData.get('title') as string) || '';
+      genre = (formData.get('genre') as string) || 'Pop';
       moodEmoji = (formData.get('moodEmoji') as string) || '🔥';
-      creatorUsername = formData.get('creatorUsername') as string;
+      creatorUsername = (formData.get('creatorUsername') as string) || 'admin';
       artist = (formData.get('artist') as string | null) || 'Unknown Singer';
       album = (formData.get('album') as string | null) || 'Single';
       language = (formData.get('language') as string | null) || 'English';
+      industry = (formData.get('industry') as string | null) || 'Bollywood';
+      lyrics = (formData.get('lyrics') as string | null) || '';
       description = (formData.get('description') as string | null) || '';
 
       const audioFile = formData.get('audio') as File | null;
-      if (audioFile) {
+      if (audioFile && audioFile.size > 0) {
         const bytes = await audioFile.arrayBuffer();
         const buffer = Buffer.from(bytes);
-        
+
         const uploadDir = path.join(process.cwd(), 'public', 'uploads');
         await fs.mkdir(uploadDir, { recursive: true });
 
@@ -94,17 +118,20 @@ export async function POST(request: Request) {
     // Save song record to database
     const newSong = await prisma.song.create({
       data: {
-        title,
-        genre,
+        title: title.trim(),
+        genre: genre.trim(),
         moodEmoji,
         audioUrl,
-        creatorUsername: creatorUsername.toLowerCase(),
+        creatorUsername: creatorUsername.toLowerCase().trim(),
         likesCount: 0,
-        artist,
-        album,
-        language,
-        description,
-      }
+        likedBy: [],
+        artist: artist.trim(),
+        album: album.trim(),
+        language: language.trim(),
+        industry: industry.trim(),
+        lyrics: lyrics.trim(),
+        description: description.trim(),
+      },
     });
 
     return NextResponse.json({ song: newSong, message: 'Song saved successfully!' }, { status: 201 });
@@ -125,20 +152,20 @@ export async function DELETE(request: Request) {
     }
 
     const song = await prisma.song.findUnique({
-      where: { id: songId }
+      where: { id: songId },
     });
 
     if (!song) {
       return NextResponse.json({ error: 'Song not found' }, { status: 404 });
     }
 
-    // Verify creator authorization or admin
+    // Allow creator or admin to delete
     if (song.creatorUsername !== username && username !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized to delete this track' }, { status: 403 });
+      return NextResponse.json({ error: 'Unauthorized to delete this song' }, { status: 403 });
     }
 
     await prisma.song.delete({
-      where: { id: songId }
+      where: { id: songId },
     });
 
     return NextResponse.json({ message: 'Song deleted successfully' }, { status: 200 });

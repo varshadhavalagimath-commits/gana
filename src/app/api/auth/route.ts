@@ -45,7 +45,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const roleBadge = user.role === 'SINGER' ? '🎤 Singer' : user.role === 'ADMIN' ? '👑 Main Admin' : '🎧 Listener';
+      const roleBadge = user.role === 'SINGER' ? '🎤 Singer' : user.role === 'STORY_WRITER' ? '📖 Story Writer' : user.role === 'ADMIN' ? '👑 Main Admin' : '🎧 Listener';
       return NextResponse.json(
         { user, message: `Welcome back, @${user.username} (${roleBadge})!` },
         { status: 200 }
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     if (action === 'signup') {
       const { email, username, isPrivate } = body;
       const requestedRole = (body.role || 'USER').toUpperCase();
-      const role = requestedRole === 'SINGER' ? 'SINGER' : requestedRole === 'ADMIN' ? 'ADMIN' : 'USER';
+      const role = requestedRole === 'SINGER' ? 'SINGER' : requestedRole === 'STORY_WRITER' ? 'STORY_WRITER' : requestedRole === 'ADMIN' ? 'ADMIN' : 'USER';
 
       if (!email || !username) {
         return NextResponse.json(

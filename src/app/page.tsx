@@ -9,6 +9,7 @@ import ChatDrawer from '@/components/ChatDrawer';
 import BottomPlayer from '@/components/BottomPlayer';
 import Avatar from '@/components/Avatar';
 import AdminPortal from '@/components/AdminPortal';
+import StoryPortal from '@/components/StoryPortal';
 import {
   Music,
   MessageSquare,
@@ -21,6 +22,7 @@ import {
   ShieldAlert,
   Mic,
   Headphones,
+  BookOpen,
 } from 'lucide-react';
 import { User, Friend, Song } from '@/types';
 
@@ -44,7 +46,7 @@ function DashboardContent() {
   const [authChecked, setAuthChecked] = useState(false);
   const [userCount, setUserCount] = useState<number>(0);
   const [showGuide, setShowGuide] = useState(false);
-  const [activeTab, setActiveTab] = useState<'feed' | 'creator' | 'chat' | 'admin'>('feed');
+  const [activeTab, setActiveTab] = useState<'feed' | 'creator' | 'stories' | 'chat' | 'admin'>('feed');
 
   // Load user session
   useEffect(() => {
@@ -216,6 +218,14 @@ function DashboardContent() {
   };
 
   const handlePlayTrack = (song: Song) => {
+    // Ensure played track (from search results, trending, or stories) is present in queue for autoplay
+    setAllSongs((prev) => {
+      if (!prev.some((s) => s.id === song.id)) {
+        return [...prev, song];
+      }
+      return prev;
+    });
+
     if (activeTrack?.id === song.id) {
       setIsPlaying(!isPlaying);
     } else {
@@ -227,7 +237,7 @@ function DashboardContent() {
   const handleNextTrack = () => {
     if (!allSongs || allSongs.length === 0 || !activeTrack) return;
     const currentIndex = allSongs.findIndex((s) => s.id === activeTrack.id);
-    const nextIndex = (currentIndex + 1) % allSongs.length;
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % allSongs.length;
     setActiveTrack(allSongs[nextIndex]);
     setIsPlaying(true);
   };
@@ -235,7 +245,7 @@ function DashboardContent() {
   const handlePreviousTrack = () => {
     if (!allSongs || allSongs.length === 0 || !activeTrack) return;
     const currentIndex = allSongs.findIndex((s) => s.id === activeTrack.id);
-    const prevIndex = (currentIndex - 1 + allSongs.length) % allSongs.length;
+    const prevIndex = currentIndex === -1 ? 0 : (currentIndex - 1 + allSongs.length) % allSongs.length;
     setActiveTrack(allSongs[prevIndex]);
     setIsPlaying(true);
   };
@@ -306,6 +316,7 @@ function DashboardContent() {
 
   const isAdmin = currentUser.username.toLowerCase() === 'admin' || currentUser.role === 'ADMIN';
   const isSinger = currentUser.role === 'SINGER';
+  const isWriter = currentUser.role === 'STORY_WRITER';
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-28 bg-zinc-950 text-white">
@@ -378,10 +389,12 @@ function DashboardContent() {
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                     : isSinger
                     ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                    : isWriter
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                     : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                 }`}
               >
-                {isAdmin ? '👑 Admin' : isSinger ? '🎤 Singer' : '🎧 Listener'}
+                {isAdmin ? '👑 Admin' : isSinger ? '🎤 Singer' : isWriter ? '📖 Story Writer' : '🎧 Listener'}
               </span>
             </div>
 
@@ -457,7 +470,25 @@ function DashboardContent() {
             <span>{isSinger ? '🎤 Singer Studio (Upload)' : 'Upload Songs'}</span>
           </button>
 
-          {/* Tab 3: Chat Room */}
+          {/* Tab 3: Audio Stories & Novels */}
+          <button
+            onClick={() => setActiveTab('stories')}
+            className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 select-none active:scale-95 border shrink-0 ${
+              activeTab === 'stories'
+                ? 'bg-purple-600 border-purple-500 text-black font-extrabold shadow shadow-purple-500/25'
+                : 'bg-transparent border-transparent text-zinc-400 hover:text-white hover:bg-zinc-900/60'
+            }`}
+          >
+            <BookOpen size={14} className={isWriter ? 'text-emerald-300' : 'text-purple-300'} />
+            <span>Audio Stories & Novels</span>
+            {isWriter && (
+              <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-black border border-emerald-500/30">
+                Writer
+              </span>
+            )}
+          </button>
+
+          {/* Tab 4: Chat Room */}
           <button
             onClick={() => setActiveTab('chat')}
             className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 select-none active:scale-95 border relative shrink-0 ${
@@ -531,6 +562,17 @@ function DashboardContent() {
             <SongCreator
               creatorUsername={currentUser.username}
               onSongCreated={handleSongCreated}
+            />
+          </div>
+        )}
+
+        {activeTab === 'stories' && (
+          <div className="space-y-6 animate-fade-in">
+            <StoryPortal
+              currentUser={currentUser}
+              onPlayTrack={handlePlayTrack}
+              currentTrack={activeTrack}
+              isPlaying={isPlaying}
             />
           </div>
         )}
