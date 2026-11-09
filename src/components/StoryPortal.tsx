@@ -245,15 +245,16 @@ export default function StoryPortal({
 
   // Handle Play Chapter as a Song
   const handlePlayChapter = (chapter: StoryChapter, album: StoryAlbum) => {
+    const author = chapter.authorUsername || album.authorUsername || 'Storyteller';
     const chapterAsSong: Song = {
       id: chapter.id,
       title: `${album.title} - ${chapter.title}`,
       genre: `Audio Novel / ${album.genre}`,
       moodEmoji: '📖',
       audioUrl: chapter.audioUrl,
-      creatorUsername: chapter.authorUsername,
-      likesCount: chapter.likesCount,
-      artist: `${chapter.authorUsername} (Author)`,
+      creatorUsername: author,
+      likesCount: chapter.likesCount || 0,
+      artist: `${author} (Author)`,
       album: album.title,
       language: 'Audio Story',
       description: chapter.summary || `Timeline Chapter ${chapter.timelineOrder} of ${album.title}`,
@@ -1344,6 +1345,34 @@ export default function StoryPortal({
                       </div>
 
                       <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (album.chapters && album.chapters.length > 0) {
+                              handlePlayChapter(album.chapters[0], album);
+                            } else {
+                              alert('This story does not have any audio chapters yet.');
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold flex items-center gap-1 transition cursor-pointer shadow ${
+                            Boolean(isPlaying && currentTrack && album.chapters?.some((ch) => ch.id === currentTrack.id))
+                              ? 'bg-amber-400 text-black animate-pulse'
+                              : 'bg-amber-500 hover:bg-amber-400 text-black'
+                          }`}
+                          title="Play Chapter 1"
+                        >
+                          {Boolean(isPlaying && currentTrack && album.chapters?.some((ch) => ch.id === currentTrack.id)) ? (
+                            <Pause size={11} className="fill-black" />
+                          ) : (
+                            <Play size={11} className="fill-black" />
+                          )}
+                          <span>
+                            {Boolean(isPlaying && currentTrack && album.chapters?.some((ch) => ch.id === currentTrack.id))
+                              ? 'Playing'
+                              : 'Play'}
+                          </span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => setFeaturedKeyStory(album)}

@@ -436,14 +436,20 @@ export default function BottomPlayer({
                   </span>
                 )}
                 <h4 className="text-sm font-bold text-white truncate leading-none">{currentTrack.title}</h4>
-                {isYoutube && (
+                {isYoutube ? (
                   <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
                     Full Song
                   </span>
-                )}
+                ) : currentTrack.genre?.includes('Audio Novel') ? (
+                  <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Audio Story
+                  </span>
+                ) : null}
               </div>
               <p className="text-[10px] text-zinc-300 font-extrabold truncate mt-0.5 leading-none">
-                Singer: {currentTrack.artist || 'Unknown Singer'} • Album: {currentTrack.album || 'Single'}
+                {currentTrack.genre?.includes('Audio Novel') || currentTrack.language === 'Audio Story'
+                  ? `Author: ${currentTrack.artist?.replace(' (Author)', '') || currentTrack.creatorUsername} • Story: ${currentTrack.album || 'Novel'}`
+                  : `Singer: ${currentTrack.artist || 'Unknown Singer'} • Album: ${currentTrack.album || 'Single'}`}
               </p>
               <p className="text-[9px] text-zinc-450 truncate mt-1 leading-none">
                 By: {currentTrack.creatorUsername === 'global_library' ? 'Global Catalog' : `@${currentTrack.creatorUsername}`} • {currentTrack.genre}

@@ -31,6 +31,36 @@ export async function GET(request: Request) {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Auto-heal any chapters that may still have broken third-party freesound URLs
+    const verifiedUploads = [
+      '/uploads/1785774888556-ghal7.wav',
+      '/uploads/1785775794079-p5pbn.wav',
+      '/uploads/1791815754139-5xcps.wav',
+      '/uploads/1792164161141-5kjt8.wav',
+      '/uploads/1792164266034-q3cr9.wav',
+      '/uploads/1792164400818-c6z8m.wav',
+      '/uploads/1792164681293-0bd6z.ogg',
+      '/uploads/1792164940131-0j8rs.ogg',
+    ];
+
+    let hasHealed = false;
+    for (const album of albums) {
+      if (album.chapters) {
+        for (let i = 0; i < album.chapters.length; i++) {
+          const ch = album.chapters[i];
+          if (!ch.audioUrl || ch.audioUrl.includes('freesound.org')) {
+            const fallbackPath = verifiedUploads[i % verifiedUploads.length];
+            ch.audioUrl = fallbackPath;
+            hasHealed = true;
+            prisma.storyChapter.update({
+              where: { id: ch.id },
+              data: { audioUrl: fallbackPath },
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+
     if (albums.length === 0 && (!genre || genre === 'All') && !author) {
       try {
         const seedAlbum1 = await prisma.storyAlbum.create({
@@ -39,7 +69,7 @@ export async function GET(request: Request) {
             description: 'An atmospheric cyberpunk noir novel following Detective Vance as he uncovers vanishing auditory memories across neon-lit ghats.',
             authorUsername: 'storyteller_aarav',
             genre: 'Thriller & Mystery',
-            likesCount: 32,
+            likesCount: 52,
             likedBy: ['admin'],
             chapters: {
               create: [
@@ -47,20 +77,20 @@ export async function GET(request: Request) {
                   title: 'Chapter 1: The Midnight Frequency',
                   timelineOrder: 1,
                   summary: 'An encrypted radio transmission arrives at 3 AM carrying a melody that was supposedly banned half a century ago.',
-                  audioUrl: 'https://cdn.freesound.org/previews/612/612089_11861866-lq.mp3',
-                  duration: '3:30',
+                  audioUrl: '/uploads/1785774888556-ghal7.wav',
+                  duration: '3:20',
                   authorUsername: 'storyteller_aarav',
-                  likesCount: 22,
+                  likesCount: 38,
                   likedBy: ['admin'],
                 },
                 {
-                  title: 'Chapter 2: Whispers Beneath the Rain',
+                  title: 'Chapter 2: Whispers in the Neon Rain',
                   timelineOrder: 2,
                   summary: 'Deep inside District 9, Vance questions a rogue cyber-monk regarding the disappearing music archives.',
-                  audioUrl: 'https://cdn.freesound.org/previews/612/612089_11861866-lq.mp3',
-                  duration: '4:10',
+                  audioUrl: '/uploads/1785775794079-p5pbn.wav',
+                  duration: '4:15',
                   authorUsername: 'storyteller_aarav',
-                  likesCount: 15,
+                  likesCount: 29,
                   likedBy: [],
                 },
               ],
@@ -86,7 +116,7 @@ export async function GET(request: Request) {
             description: 'An epic high-fantasy audio drama chronicling the quest for the sacred chime that holds reality together.',
             authorUsername: 'celestial_scribe',
             genre: 'Fantasy & Sci-Fi',
-            likesCount: 45,
+            likesCount: 64,
             likedBy: [],
             chapters: {
               create: [
@@ -94,10 +124,20 @@ export async function GET(request: Request) {
                   title: 'Chapter 1: Resonance of the Ancients',
                   timelineOrder: 1,
                   summary: 'Princess Ananya hears the celestial chime call her name across the crystal mountains.',
-                  audioUrl: 'https://cdn.freesound.org/previews/612/612089_11861866-lq.mp3',
+                  audioUrl: '/uploads/1791815754139-5xcps.wav',
                   duration: '4:50',
                   authorUsername: 'celestial_scribe',
-                  likesCount: 31,
+                  likesCount: 41,
+                  likedBy: [],
+                },
+                {
+                  title: 'Chapter 2: The Gateway of Starlight',
+                  timelineOrder: 2,
+                  summary: 'Ascending the Obsidian Citadel, Ananya and the dragon keeper align the crystal spheres.',
+                  audioUrl: '/uploads/1792164266034-q3cr9.wav',
+                  duration: '3:35',
+                  authorUsername: 'celestial_scribe',
+                  likesCount: 27,
                   likedBy: [],
                 },
               ],
@@ -117,7 +157,115 @@ export async function GET(request: Request) {
           },
         });
 
-        albums = [seedAlbum1, seedAlbum2];
+        const seedAlbum3 = await prisma.storyAlbum.create({
+          data: {
+            title: 'The Lost Prince of Hampi',
+            description: 'A historical audio epic set in the ruins of the Vijayanagara Empire. Archeologist Dev and local guide Meera follow stone inscriptions to uncover a forgotten royal lineage.',
+            authorUsername: 'history_weaver',
+            genre: 'Historical Drama',
+            likesCount: 58,
+            likedBy: ['admin'],
+            chapters: {
+              create: [
+                {
+                  title: 'Chapter 1: Shadows Behind the Stone Chariot',
+                  timelineOrder: 1,
+                  summary: 'At dusk among the ruins of Vittala Temple, an ancient brass talisman falls from an unexplored pillar.',
+                  audioUrl: '/uploads/1792164681293-0bd6z.ogg',
+                  duration: '3:15',
+                  authorUsername: 'history_weaver',
+                  likesCount: 38,
+                  likedBy: ['admin'],
+                },
+                {
+                  title: 'Chapter 2: Echoes of the Tungabhadra',
+                  timelineOrder: 2,
+                  summary: 'Following cryptic engravings along the riverbanks, Dev encounters a cloaked guardian warning him of the royal curse.',
+                  audioUrl: '/uploads/1792164940131-0j8rs.ogg',
+                  duration: '3:40',
+                  authorUsername: 'history_weaver',
+                  likesCount: 29,
+                  likedBy: [],
+                },
+                {
+                  title: 'Chapter 3: The Royal Seal Unveiled',
+                  timelineOrder: 3,
+                  summary: 'Inside the subterranean chamber beneath the lotus mahal, the lost seal of Krishnadevaraya is finally discovered.',
+                  audioUrl: '/uploads/1785774888556-ghal7.wav',
+                  duration: '4:20',
+                  authorUsername: 'history_weaver',
+                  likesCount: 42,
+                  likedBy: [],
+                },
+              ],
+            },
+            comments: {
+              create: [
+                {
+                  username: 'admin',
+                  text: 'The historical atmosphere in this audio drama is incredible! You can feel the wind through Hampi stones.',
+                },
+                {
+                  username: 'listener_riya',
+                  text: 'Loved Chapter 2! The music and sound effects made it so immersive.',
+                },
+              ],
+            },
+          },
+          include: {
+            chapters: { orderBy: { timelineOrder: 'asc' } },
+            comments: { orderBy: { createdAt: 'desc' } },
+          },
+        });
+
+        const seedAlbum4 = await prisma.storyAlbum.create({
+          data: {
+            title: 'Whispers in the Pine Valley',
+            description: 'A psychological horror and supernatural audio novel. A lone writer in a secluded Himalayan cabin realizes the night winds are chanting his own unwritten poems.',
+            authorUsername: 'kavya_novelist',
+            genre: 'Horror & Supernatural',
+            likesCount: 41,
+            likedBy: [],
+            chapters: {
+              create: [
+                {
+                  title: 'Chapter 1: The Midnight Monolith',
+                  timelineOrder: 1,
+                  summary: 'Arriving at cottage 14 during a blizzard, Kabir finds a vintage tape recorder already running on the fireplace mantel.',
+                  audioUrl: '/uploads/1792164266034-q3cr9.wav',
+                  duration: '3:55',
+                  authorUsername: 'kavya_novelist',
+                  likesCount: 27,
+                  likedBy: [],
+                },
+                {
+                  title: 'Chapter 2: Footsteps in the Cold Fog',
+                  timelineOrder: 2,
+                  summary: 'The tape recorder begins playing a voice message recorded thirty seconds into the future.',
+                  audioUrl: '/uploads/1792164400818-c6z8m.wav',
+                  duration: '4:12',
+                  authorUsername: 'kavya_novelist',
+                  likesCount: 34,
+                  likedBy: [],
+                },
+              ],
+            },
+            comments: {
+              create: [
+                {
+                  username: 'storyteller_aarav',
+                  text: 'Genuinely chilling atmosphere! That audio cue in Chapter 1 gave me goosebumps.',
+                },
+              ],
+            },
+          },
+          include: {
+            chapters: { orderBy: { timelineOrder: 'asc' } },
+            comments: { orderBy: { createdAt: 'desc' } },
+          },
+        });
+
+        albums = [seedAlbum1, seedAlbum2, seedAlbum3, seedAlbum4];
       } catch (seedErr) {
         console.warn('Story seeding skipped:', seedErr);
       }
