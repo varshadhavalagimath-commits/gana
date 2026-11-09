@@ -1,0 +1,65 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  username  String   @unique
+  email     String   @unique
+  isPrivate Boolean  @default(false)
+  role      String   @default("USER") // "USER" | "SINGER" | "ADMIN"
+  createdAt DateTime @default(now())
+}
+
+model Song {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  title           String
+  genre           String
+  moodEmoji       String
+  audioUrl        String   // Path to generated audio file or upload path
+  creatorUsername String
+  createdAt       DateTime  @default(now())
+  likesCount      Int       @default(0)
+  comments        Comment[]
+  artist          String    @default("Unknown Singer")
+  album           String    @default("Single")
+  language        String    @default("English")
+  description     String    @default("")
+}
+
+model Friendship {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   // Sender username
+  friendId  String   // Receiver username
+  status    String   // "PENDING" or "ACCEPTED"
+  createdAt DateTime @default(now())
+
+  @@unique([userId, friendId])
+}
+
+model ChatMessage {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  senderUsername   String
+  receiverUsername String
+  text             String
+  sharedSongId     String?  // Optional shared song ID
+  isRead           Boolean  @default(false)
+  timestamp        DateTime @default(now())
+}
+
+model Comment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  text      String
+  username  String
+  songId    String   @db.ObjectId
+  song      Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
